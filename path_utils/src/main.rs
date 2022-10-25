@@ -3,6 +3,7 @@
 use clap::{Parser, Subcommand};
 use itertools::Itertools;
 use lazy_static::lazy_static;
+use once_cell::sync::OnceCell;
 use regex::{Regex, RegexBuilder};
 use std::{
     env,
@@ -114,56 +115,62 @@ fn path_matches_regex(path: &Path, search_pattern: &Regex) -> Option<String> {
     })
 }
 
+static SEARCH_PROGRAM: OnceCell<OsString> = OnceCell::new();
+static SEARCH_REGEX: OnceCell<Regex> = OnceCell::new();
+
 impl Action {
+    #[allow(clippy::type_complexity)]
     fn run(&self) -> AnyResult<()> {
-        match self {
-            Self::All { name } => {
-                let search_program = OsString::from(name);
-                println!("Searching for all occurences of {} in $PATH", name);
-                let programs = get_programs()?;
-                for path in programs {
-                    if let Some(path) = path_matches_program_name(&path, &search_program) {
-                        println!("{}", path);
-                    }
-                }
-                return Ok(());
-            }
-            Self::First { name } => {
-                let search_program = OsString::from(name);
-                println!("Searching for first occurence of {} in $PATH", name);
-                let programs = get_programs()?;
-                for path in programs {
-                    if let Some(path) = path_matches_program_name(&path, &search_program) {
-                        println!("{}", path);
-                        return Ok(());
-                    }
-                }
-                println!("No items found.");
-            }
-            Self::AllRegex { pattern } => {
-                let search_pattern = Regex::new(pattern)?;
-                println!("Searching for all occurences of {} in $PATH", pattern);
-                let programs = get_programs()?;
-                for path in programs {
-                    if let Some(path) = path_matches_regex(&path, &search_pattern) {
-                        println!("{}", path);
-                    }
-                }
-                return Ok(());
-            }
-            Self::FirstRegex { pattern } => {
-                let search_pattern = Regex::new(pattern)?;
-                println!("Searching for first occurence of {} in $PATH", pattern);
-                let programs = get_programs()?;
-                for path in programs {
-                    if let Some(path) = path_matches_regex(&path, &search_pattern) {
-                        println!("{}", path);
-                        return Ok(());
-                    }
-                }
-                println!("No items found.");
-            }
+        let (should_search_all, mut check_path_callback): (
+            _,
+            Box<dyn FnMut(&Path) -> Option<String>>,
+        ) = match self {
+            Self::All { name } => (
+                true,
+                Box::new(|path| {
+                    path_matches_program_name(
+                        path,
+                        SEARCH_PROGRAM.get_or_init(|| OsString::from(name.clone())),
+                    )
+                }),
+            ),
+            Self::First { name } => (
+                false,
+                Box::new(|path| {
+                    path_matches_program_name(
+                        path,
+                        SEARCH_PROGRAM.get_or_init(|| OsString::from(name.clone())),
+                    )
+                }),
+            ),
+            Self::AllRegex { pattern } => (
+                true,
+                Box::new(|path| {
+                    path_matches_regex(
+                        path,
+                        SEARCH_REGEX.get_or_init(|| Regex::new(pattern).expect("Invaild regex")),
+                    )
+                }),
+            ),
+            Self::FirstRegex { pattern } => (
+                false,
+                Box::new(|path| {
+                    path_matches_regex(
+                        path,
+                        SEARCH_REGEX.get_or_init(|| Regex::new(pattern).expect("Invaild regex")),
+                    )
+                }),
+            ),
         };
+        let programs = get_programs()?;
+        for path in programs {
+            if let Some(path) = check_path_callback(&path) {
+                println!("{}", path);
+                if !should_search_all {
+                    break;
+                }
+            }
+        }
         Ok(())
     }
 }
