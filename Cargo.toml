@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "path_utils",
-    "find_dir"
+    "find_dir",
+    "is_prime"
 ]
