@@ -87,7 +87,7 @@ fn get_programs() -> AnyResult<Vec<PathBuf>> {
                 let file_ext = &path.extension()?.to_string_lossy();
                 FILE_EXT_IS_EXECUTABLE_REGEX
                     .is_match(file_ext)
-                    .then(|| path)
+                    .then_some(path)
             })
         })
         .unique()
