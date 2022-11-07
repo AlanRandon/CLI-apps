@@ -39,7 +39,10 @@ fn main() {
         "{} {}",
         number,
         if test.get_test()(number) {
-            "is prime"
+            match test {
+                PrimalityTest::TrialDivision => "is prime",
+                PrimalityTest::MillerRabin => "is probably prime",
+            }
         } else {
             "is not prime"
         }
