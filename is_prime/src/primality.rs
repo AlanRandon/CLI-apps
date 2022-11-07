@@ -18,49 +18,51 @@ pub fn trial_division(n: u128) -> bool {
     }
 }
 
-pub fn miller_rabin(n: u128, passes: usize) -> bool {
-    if matches!(n, 0 | 1 | 4 | 6 | 8 | 9) {
-        return false;
-    }
+/// Performs the Miller-Rabin primality test to determine if a number is prime
+///
+/// If the function returns false, n is not prime.
+/// If the function returns true, n is very likely not a prime.
+pub fn miller_rabin(n: &BigUint, passes: usize) -> bool {
+    match n.try_into() {
+        Ok(0 | 1 | 4 | 6 | 8 | 9) => false,
+        Ok(2 | 3 | 5 | 7) => true,
+        _ => {
+            let one_less = n - 1_u8;
 
-    if matches!(n, 2 | 3 | 5 | 7) {
-        return true;
-    }
-
-    let mut s = 0;
-    let mut d = n - 1;
-    while d % 2 == 0 {
-        d >>= 1;
-        s += 1;
-    }
-
-    let one = BigUint::from(1_u8);
-    let two = BigUint::from(2_u8);
-
-    let trial_composite = |a: BigUint| {
-        if a.pow(d.try_into().expect("d is too big")) % n == one {
-            return false;
-        }
-
-        for i in 0..s {
-            if a.pow((two.pow(i) * d).try_into().expect("d is too big")) % n == BigUint::from(n - 1)
-            {
-                return false;
+            let mut s: u32 = 0;
+            let mut d = one_less.clone();
+            while &d % 2_u8 == BigUint::from(0_u8) {
+                d >>= 1;
+                s += 1;
             }
-        }
 
-        true
-    };
+            let one = BigUint::from(1_u8);
+            let two = BigUint::from(2_u8);
 
-    for _ in 0..passes {
-        println!("Gnereating big range");
-        let a = thread_rng().gen_biguint_range(&two, &BigUint::from(n));
-        if trial_composite(a) {
-            return false;
+            let trial_composite = |a: BigUint| {
+                if a.modpow(&d, n) == one {
+                    return false;
+                }
+
+                for i in 0..s {
+                    if a.modpow(&(two.pow(i) * &d), n) == one_less {
+                        return false;
+                    }
+                }
+
+                true
+            };
+
+            for _ in 0..passes {
+                let a = thread_rng().gen_biguint_range(&two, n);
+                if trial_composite(a) {
+                    return false;
+                }
+            }
+
+            true
         }
     }
-
-    true
 }
 
 #[test]
@@ -85,14 +87,15 @@ fn trial_division_test() {
 #[test]
 fn miller_rabin_test() {
     for (number, is_prime) in [
-        (1, false),
+        (1_u128, false),
         (3, true),
         (10, false),
         (8128, false),
         (9_061_530_241, true),
+        (845_689_124_236_832_528_811_234_994_303, true),
     ] {
         assert_eq!(
-            miller_rabin(number, 8),
+            miller_rabin(&BigUint::from(number), 8),
             is_prime,
             "{} {} prime",
             number,
