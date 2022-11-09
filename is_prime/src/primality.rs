@@ -53,8 +53,10 @@ pub fn miller_rabin(n: &BigUint, passes: usize) -> bool {
                 true
             };
 
+            let mut rng = thread_rng();
+
             for _ in 0..passes {
-                let a = thread_rng().gen_biguint_range(&two, n);
+                let a = rng.gen_biguint_range(&two, n);
                 if trial_composite(a) {
                     return false;
                 }

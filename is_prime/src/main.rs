@@ -10,7 +10,7 @@ mod primality;
 #[command(author, version)]
 struct Args {
     /// The number to test the primality of
-    number: u128,
+    number: BigUint,
 
     // The primality test to use
     #[arg(long, short, value_enum, default_value_t = PrimalityTest::TrialDivision)]
@@ -24,10 +24,10 @@ enum PrimalityTest {
 }
 
 impl PrimalityTest {
-    fn get_test(&self) -> fn(n: u128) -> bool {
+    fn get_test(&self) -> fn(n: &BigUint) -> bool {
         match self {
-            Self::TrialDivision => primality::trial_division,
-            Self::MillerRabin => |n| primality::miller_rabin(&BigUint::from(n), 8),
+            Self::TrialDivision => |n| primality::trial_division(n.try_into().unwrap()),
+            Self::MillerRabin => |n| primality::miller_rabin(n, 8),
         }
     }
 }
@@ -38,7 +38,7 @@ fn main() {
     println!(
         "{} {}",
         number,
-        if test.get_test()(number) {
+        if test.get_test()(&number) {
             match test {
                 PrimalityTest::TrialDivision => "is prime",
                 PrimalityTest::MillerRabin => "is probably prime",
