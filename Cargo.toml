@@ -2,7 +2,8 @@
 members = [
     "path_utils",
     "find_dir",
-    "is_prime"
+    "is_prime",
+    "boggle"
 ]
 
 [workspace.dependencies]
