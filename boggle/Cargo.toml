@@ -9,3 +9,4 @@ edition = "2021"
 tui = "0.19"
 crossterm = "0.25"
 lazy_static = { workspace = true }
+once_cell = "1.15"

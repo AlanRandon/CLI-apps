@@ -1,178 +1,167 @@
-use super::WORDS;
-use crossterm::{
-    cursor,
-    event::{DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
-use lazy_static::lazy_static;
-use std::{io, sync::RwLock};
+use crate::{AnyResult, GameState, TERMINAL};
+use crossterm::event::{Event, KeyCode, KeyModifiers};
 use tui::{
-    backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table},
-    Terminal,
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Row, Table},
 };
-
-lazy_static! {
-    pub static ref WORDS_SCROLL: RwLock<usize> = RwLock::new(0);
-}
 
 pub enum WordEntryResult {
     InvalidWord,
     Valid,
 }
 
-pub fn ui<F>(mut on_new_word: F) -> Result<(), io::Error>
+pub struct EventHandlers<F>
 where
-    F: FnMut(String) -> WordEntryResult,
+    F: FnMut(String, &mut GameState) -> WordEntryResult,
 {
-    // setup terminal
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        EnableMouseCapture,
-        cursor::Hide
-    )?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    pub word_entered: F,
+}
+
+pub enum RenderResult {
+    None,
+    Exit,
+}
+
+pub fn ui<F>(
+    mut event_handlers: EventHandlers<F>,
+    game_state: &mut GameState,
+) -> AnyResult<RenderResult>
+where
+    F: FnMut(String, &mut GameState) -> WordEntryResult,
+{
+    let mut result = RenderResult::None;
+    let mut terminal = TERMINAL.lock().unwrap();
 
     terminal.hide_cursor()?;
 
-    let mut input_buffer = String::new();
-    let mut word_validation = None;
+    let root = Block::default().title("Boggle").borders(Borders::ALL);
+    let game_grid = Table::new(vec![
+        Row::new(vec!["a", "b", "c"]),
+        Row::new(vec!["d", "e", "qu"]),
+        Row::new(vec!["g", "h", "i"]),
+    ])
+    .widths(&[
+        Constraint::Length(3),
+        Constraint::Length(3),
+        Constraint::Length(3),
+    ])
+    .column_spacing(1)
+    .block(Block::default().borders(Borders::ALL));
 
-    loop {
-        let mut should_exit = false;
+    terminal.draw(|frame| {
+        let size = frame.size();
+        let root_inner_rect = root.inner(size);
+        let mut word_validation_result = None;
 
-        let root = Block::default().title("Boggle").borders(Borders::ALL);
-        let game_grid = Table::new(vec![
-            Row::new(vec!["a", "b", "c"]),
-            Row::new(vec!["d", "e", "qu"]),
-            Row::new(vec!["g", "h", "i"]),
-        ])
-        .widths(&[
-            Constraint::Length(3),
-            Constraint::Length(3),
-            Constraint::Length(3),
-        ])
-        .column_spacing(1)
-        .block(Block::default().borders(Borders::ALL));
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(75), Constraint::Percentage(25)])
+            .horizontal_margin(1)
+            .split(root_inner_rect);
 
-        terminal.draw(|frame| {
-            let size = frame.size();
-            let root_inner_rect = root.inner(size);
+        let top_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Max(14), Constraint::Percentage(50)])
+            .split(layout[0]);
 
-            frame.render_widget(root, size);
-
-            let layout = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Percentage(75), Constraint::Percentage(25)])
-                .horizontal_margin(1)
-                .split(root_inner_rect);
-
-            let top_layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Max(14), Constraint::Percentage(50)])
-                .split(layout[0]);
-
-            frame.render_widget(game_grid, top_layout[0]);
-
-            let Ok(event) = crossterm::event::read() else {
+        let Ok(event) = crossterm::event::read() else {
                 return;
             };
 
-            if let Event::Key(key_event) = event {
-                if key_event.modifiers.contains(KeyModifiers::NONE) {
-                    match key_event.code {
-                        KeyCode::Char(character) => {
-                            input_buffer.push(character);
-                            word_validation = None;
-                        }
-                        KeyCode::Backspace => {
-                            input_buffer.pop();
-                        }
-                        KeyCode::Esc => should_exit = true,
-                        KeyCode::Enter | KeyCode::Tab => {
-                            word_validation = Some(on_new_word(std::mem::take(&mut input_buffer)));
-                        }
-                        KeyCode::Down => {
-                            let mut words_scroll = WORDS_SCROLL.write().unwrap();
-                            *words_scroll = (words_scroll.saturating_add(1))
-                                .clamp(0, WORDS.read().unwrap().len().saturating_sub(1))
-                        }
-                        KeyCode::Up => {
-                            let mut words_scroll = WORDS_SCROLL.write().unwrap();
-                            *words_scroll = (words_scroll.saturating_sub(1_usize))
-                                .clamp(0, WORDS.read().unwrap().len().saturating_sub(1))
-                        }
-                        _ => (),
+        if let Event::Key(key_event) = event {
+            if key_event.modifiers.contains(KeyModifiers::NONE) {
+                match key_event.code {
+                    KeyCode::Char(character) => {
+                        game_state.word_entry_buffer.push(character);
+                        word_validation_result = None;
                     }
+                    KeyCode::Backspace => {
+                        game_state.word_entry_buffer.pop();
+                    }
+                    KeyCode::Esc => result = RenderResult::Exit,
+                    KeyCode::Enter | KeyCode::Tab => {
+                        word_validation_result = Some((event_handlers.word_entered)(
+                            std::mem::take(&mut game_state.word_entry_buffer),
+                            game_state,
+                        ));
+                    }
+                    KeyCode::Down => {
+                        let GameState {
+                            words_scroll,
+                            words,
+                            ..
+                        } = game_state;
+                        *words_scroll =
+                            (words_scroll.saturating_add(1)).clamp(0, words.len().saturating_sub(1))
+                    }
+                    KeyCode::Up => {
+                        let GameState {
+                            words_scroll,
+                            words,
+                            ..
+                        } = game_state;
+                        *words_scroll = (words_scroll.saturating_sub(1_usize))
+                            .clamp(0, words.len().saturating_sub(1))
+                    }
+                    _ => (),
                 }
             }
-
-            let input = Paragraph::new(Spans::from(vec![
-                Span::raw(input_buffer.clone()),
-                Span::styled(" ", Style::default().bg(Color::DarkGray)),
-            ]))
-            .block(
-                Block::default()
-                    .title(match word_validation {
-                        Some(WordEntryResult::Valid) => "Valid Word Found",
-                        Some(WordEntryResult::InvalidWord) => "Word Invalid",
-                        None => "Enter a valid word",
-                    })
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(match word_validation {
-                        Some(WordEntryResult::Valid) => Color::Green,
-                        Some(WordEntryResult::InvalidWord) => Color::Red,
-                        None => Color::Reset,
-                    })),
-            );
-
-            frame.render_widget(input, layout[1]);
-
-            let words_list = {
-                let words = WORDS.read().unwrap();
-                List::new(if words.is_empty() {
-                    Vec::new()
-                } else {
-                    let mut words: Vec<_> = words.iter().collect();
-
-                    words.sort();
-
-                    words
-                        .get(*WORDS_SCROLL.read().unwrap()..words.len())
-                        .unwrap()
-                        .iter()
-                        .map(|&word| ListItem::new(word.clone()))
-                        .collect()
-                })
-                .block(Block::default().title("Words").borders(Borders::ALL))
-            };
-
-            frame.render_widget(words_list, top_layout[1]);
-
-            frame.set_cursor(size.width, size.height);
-        })?;
-
-        if should_exit {
-            break;
         }
-    }
 
-    // restore terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+        let input = Paragraph::new(Spans::from(vec![
+            Span::raw(game_state.word_entry_buffer.clone()),
+            Span::styled(" ", Style::default().bg(Color::DarkGray)),
+        ]))
+        .block(
+            Block::default()
+                .title(match word_validation_result {
+                    Some(WordEntryResult::Valid) => "Valid Word Found",
+                    Some(WordEntryResult::InvalidWord) => "Word Invalid",
+                    None => "Enter a valid word",
+                })
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(match word_validation_result {
+                    Some(WordEntryResult::Valid) => Color::Green,
+                    Some(WordEntryResult::InvalidWord) => Color::Red,
+                    None => Color::Reset,
+                })),
+        );
 
-    Ok(())
+        let words_list = {
+            let GameState {
+                words_scroll,
+                words,
+                ..
+            } = game_state;
+
+            List::new(if words.is_empty() {
+                Vec::new()
+            } else {
+                let mut words: Vec<_> = words.iter().collect();
+
+                words.sort();
+
+                words
+                    .get(*words_scroll..words.len())
+                    .unwrap()
+                    .iter()
+                    .map(|&word| ListItem::new(word.clone()))
+                    .collect()
+            })
+            .block(Block::default().title("Words").borders(Borders::ALL))
+        };
+
+        frame.render_widget(Clear, size);
+        frame.render_widget(root, size);
+        frame.render_widget(game_grid, top_layout[0]);
+        frame.render_widget(words_list, top_layout[1]);
+        frame.render_widget(input, layout[1]);
+        frame.set_cursor(size.width, size.height);
+    })?;
+
+    terminal.autoresize()?;
+
+    Ok(result)
 }
