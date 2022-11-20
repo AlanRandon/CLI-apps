@@ -8,7 +8,7 @@ use lazy_static::lazy_static;
 use rand::seq::SliceRandom;
 use std::{
     collections::HashSet,
-    fs,
+    hash::Hash,
     io::{self, Stdout},
     sync::Mutex,
 };
@@ -115,37 +115,56 @@ fn main() -> AnyResult<()> {
     loop {
         let render_result = ui::ui(
             ui::EventHandlers {
-                word_entered: |mut word, state| {
+                word_entered: |word, state| {
                     let mut letters = Vec::new();
                     let mut chars = word.chars();
+
                     while let Some(letter) = chars.next() {
                         if letter == 'q' && chars.next() != Some('u') {
                             return WordEntryResult::InvalidWord;
                         }
                         letters.push(letter);
                     }
-                    let mut possible_matches = Vec::new();
+
+                    let mut possible_matches = HashSet::new();
                     for (x, row) in state.board.letters.iter().enumerate() {
                         for (y, letter) in row.iter().enumerate() {
                             if word.starts_with(letter) {
-                                word = word[letter.len()..].to_string();
-                                possible_matches.push((x as i16, y as i16));
+                                let word = word[letter.len()..].to_string();
+                                possible_matches.insert((x as i16, y as i16, word));
                             }
                         }
                     }
                     while !possible_matches.is_empty() {
                         possible_matches = possible_matches
                             .into_iter()
-                            .flat_map(|(x, y)| {
-                                ADJACENT_INDICIES.iter().filter_map(|(x_diff, y_diff)| {
-                                    let index = (x + x_diff, y + y_diff);
-                                    None
-                                })
+                            .flat_map(|(x, y, word)| {
+                                let mut new_matches = Vec::new();
+                                for (x_diff, y_diff) in ADJACENT_INDICIES {
+                                    let (x, y) = (x + x_diff, y + y_diff);
+                                    if let Some(row) = state.board.letters.get(x as usize) {
+                                        if let Some(letter) = row.get(y as usize) {
+                                            if word.starts_with(letter) {
+                                                let word = word[letter.len()..].to_string();
+                                                new_matches.push((x, y, word));
+                                            }
+                                        }
+                                    }
+                                }
+                                new_matches
                             })
-                            .collect()
+                            .collect();
+
+                        if possible_matches.iter().any(|(_, _, test_word)| {
+                            //std::fs::write("log.log", contents);
+                            test_word == &word
+                        }) {
+                            state.words.insert(word);
+                            return WordEntryResult::Valid;
+                        }
                     }
-                    state.words.insert(word);
-                    WordEntryResult::Valid
+
+                    WordEntryResult::InvalidWord
                 },
             },
             &mut state,

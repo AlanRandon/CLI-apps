@@ -4,7 +4,7 @@ use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Row, Table},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Table},
 };
 
 pub enum WordEntryResult {
