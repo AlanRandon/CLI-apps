@@ -37,18 +37,6 @@ where
     terminal.hide_cursor()?;
 
     let root = Block::default().title("Boggle").borders(Borders::ALL);
-    let game_grid = Table::new(vec![
-        Row::new(vec!["a", "b", "c"]),
-        Row::new(vec!["d", "e", "qu"]),
-        Row::new(vec!["g", "h", "i"]),
-    ])
-    .widths(&[
-        Constraint::Length(3),
-        Constraint::Length(3),
-        Constraint::Length(3),
-    ])
-    .column_spacing(1)
-    .block(Block::default().borders(Borders::ALL));
 
     terminal.draw(|frame| {
         let size = frame.size();
@@ -63,7 +51,7 @@ where
 
         let top_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Max(14), Constraint::Percentage(50)])
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(layout[0]);
 
         let Ok(event) = crossterm::event::read() else {
@@ -83,32 +71,32 @@ where
                     KeyCode::Esc => result = RenderResult::Exit,
                     KeyCode::Enter | KeyCode::Tab => {
                         word_validation_result = Some((event_handlers.word_entered)(
-                            std::mem::take(&mut game_state.word_entry_buffer),
+                            std::mem::take(&mut game_state.word_entry_buffer).to_lowercase(),
                             game_state,
                         ));
                     }
                     KeyCode::Down => {
-                        let GameState {
-                            words_scroll,
-                            words,
-                            ..
-                        } = game_state;
-                        *words_scroll =
-                            (words_scroll.saturating_add(1)).clamp(0, words.len().saturating_sub(1))
+                        let GameState { words_scroll, .. } = game_state;
+                        *words_scroll = words_scroll.saturating_add(1);
                     }
                     KeyCode::Up => {
-                        let GameState {
-                            words_scroll,
-                            words,
-                            ..
-                        } = game_state;
-                        *words_scroll = (words_scroll.saturating_sub(1_usize))
-                            .clamp(0, words.len().saturating_sub(1))
+                        let GameState { words_scroll, .. } = game_state;
+                        *words_scroll = words_scroll.saturating_sub(1_usize);
                     }
                     _ => (),
                 }
             }
         }
+
+        let game_grid = Table::new(game_state.board.to_rows())
+            .widths(&[
+                Constraint::Length(4),
+                Constraint::Length(4),
+                Constraint::Length(4),
+                Constraint::Length(4),
+            ])
+            .column_spacing(1)
+            .block(Block::default().borders(Borders::ALL));
 
         let input = Paragraph::new(Spans::from(vec![
             Span::raw(game_state.word_entry_buffer.clone()),
@@ -144,7 +132,7 @@ where
                 words.sort();
 
                 words
-                    .get(*words_scroll..words.len())
+                    .get((*words_scroll).clamp(0, words.len().saturating_sub(1))..words.len())
                     .unwrap()
                     .iter()
                     .map(|&word| ListItem::new(word.clone()))
