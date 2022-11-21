@@ -71,7 +71,7 @@ where
                     KeyCode::Esc => result = RenderResult::Exit,
                     KeyCode::Enter | KeyCode::Tab => {
                         word_validation_result = Some((event_handlers.word_entered)(
-                            std::mem::take(&mut game_state.word_entry_buffer).to_lowercase(),
+                            std::mem::take(&mut game_state.word_entry_buffer).to_uppercase(),
                             game_state,
                         ));
                     }
