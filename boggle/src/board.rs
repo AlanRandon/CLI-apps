@@ -4,6 +4,8 @@ use lazy_static::lazy_static;
 use rand::seq::SliceRandom;
 use tui::widgets::{Cell, Row};
 
+use crate::AnyResult;
+
 const ADJACENT_INDICIES: [(i16, i16); 8] = [
     (-1, -1),
     (-1, 0),
@@ -22,6 +24,42 @@ lazy_static! {
             .map(|faces| faces.split(',').collect())
             .collect()
     };
+}
+
+fn get_letters(word: &str) -> Option<Vec<String>> {
+    let mut letters = Vec::new();
+    let word = word.to_uppercase();
+    let mut chars = word.chars();
+
+    while let Some(letter) = chars.next() {
+        if letter == 'Q' {
+            if chars.next() != Some('U') {
+                return None;
+            }
+            letters.push("Qu".to_string());
+        } else {
+            letters.push(letter.to_string())
+        };
+    }
+
+    Some(letters)
+}
+
+fn is_real_word(word: &str) -> AnyResult<bool> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+
+    rt.block_on(async {
+        Ok(reqwest::get(format!(
+            "https://api.dictionaryapi.dev/api/v2/entries/en/{}",
+            word
+        ))
+        .await?
+        .text()
+        .await?
+        .starts_with('['))
+    })
 }
 
 pub struct BoggleBoard {
@@ -111,5 +149,21 @@ impl BoggleBoard {
         }
 
         false
+    }
+
+    pub fn is_valid_word(&self, word: &str) -> AnyResult<bool> {
+        if word.len() < 3 {
+            return Ok(false);
+        }
+
+        let Some(letters) = get_letters(word) else {
+            return Ok(false);
+        };
+
+        if self.test_letters(letters) {
+            is_real_word(word)
+        } else {
+            Ok(false)
+        }
     }
 }

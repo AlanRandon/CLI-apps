@@ -64,26 +64,8 @@ fn main() -> AnyResult<()> {
         let render_result = ui::ui(
             ui::EventHandlers {
                 word_entered: |word, state| {
-                    if word.len() < 3 {
-                        return WordEntryResult::InvalidWord;
-                    }
-
-                    let mut letters = Vec::new();
-                    let word = word.to_uppercase();
-                    let mut chars = word.chars();
-
-                    while let Some(letter) = chars.next() {
-                        if letter == 'Q' {
-                            if chars.next() != Some('U') {
-                                return WordEntryResult::InvalidWord;
-                            }
-                            letters.push("Qu".to_string());
-                        } else {
-                            letters.push(letter.to_string())
-                        };
-                    }
-
-                    if state.board.test_letters(letters) {
+                    let is_valid = state.board.is_valid_word(&word).unwrap();
+                    if is_valid {
                         state.words.insert(word);
                         WordEntryResult::Valid
                     } else {
