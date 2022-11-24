@@ -45,21 +45,15 @@ fn get_letters(word: &str) -> Option<Vec<String>> {
     Some(letters)
 }
 
-fn is_real_word(word: &str) -> AnyResult<bool> {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-
-    rt.block_on(async {
-        Ok(reqwest::get(format!(
-            "https://api.dictionaryapi.dev/api/v2/entries/en/{}",
-            word
-        ))
-        .await?
-        .text()
-        .await?
-        .starts_with('['))
-    })
+async fn is_real_word(word: &str) -> AnyResult<bool> {
+    Ok(reqwest::get(format!(
+        "https://api.dictionaryapi.dev/api/v2/entries/en/{}",
+        word
+    ))
+    .await?
+    .text()
+    .await?
+    .starts_with('['))
 }
 
 pub struct BoggleBoard {
@@ -151,7 +145,7 @@ impl BoggleBoard {
         false
     }
 
-    pub fn is_valid_word(&self, word: &str) -> AnyResult<bool> {
+    pub async fn is_valid_word(&self, word: &str) -> AnyResult<bool> {
         if word.len() < 3 {
             return Ok(false);
         }
@@ -161,7 +155,7 @@ impl BoggleBoard {
         };
 
         if self.test_letters(letters) {
-            is_real_word(word)
+            is_real_word(word).await
         } else {
             Ok(false)
         }
