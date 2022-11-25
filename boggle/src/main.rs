@@ -12,14 +12,14 @@ use std::{
     sync::Mutex,
     time::Duration,
 };
-use tokio::runtime::Handle;
+use tokio::time::Instant;
 use tui::{backend::CrosstermBackend, Terminal};
 use ui::WordEntryResult;
 
 mod board;
 mod ui;
 
-type AnyError = Box<dyn std::error::Error>;
+type AnyError = Box<dyn std::error::Error + Sync + Send>;
 type AnyResult<T> = Result<T, AnyError>;
 
 lazy_static! {
@@ -35,15 +35,17 @@ pub struct GameState {
     words_scroll: usize,
     words: HashSet<String>,
     board: BoggleBoard,
+    deadline: Instant,
 }
 
 impl GameState {
-    fn new() -> Self {
+    fn new(deadline: Instant) -> Self {
         Self {
             word_entry_buffer: String::new(),
             words_scroll: 0,
             words: HashSet::new(),
             board: BoggleBoard::new(),
+            deadline,
         }
     }
 
@@ -62,12 +64,8 @@ impl GameState {
     }
 }
 
-fn main() -> AnyResult<()> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-
+#[tokio::main]
+async fn main() -> AnyResult<()> {
     // setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -78,18 +76,19 @@ fn main() -> AnyResult<()> {
         cursor::Hide
     )?;
 
-    let mut state = GameState::new();
+    let timer = tokio::time::sleep(Duration::from_secs(180));
+
+    let mut state = GameState::new(timer.deadline());
 
     let gameloop = async {
-        let handle = Handle::current();
-
         loop {
             let render_result = ui::ui(
                 ui::EventHandlers {
                     word_entered: |word, state| {
-                        let is_valid = handle
-                            .spawn_blocking(|| state.board.is_valid_word(&word))
-                            .unwrap();
+                        let Ok(is_valid) = state.board.is_valid_word(&word) else {
+                            return WordEntryResult::InvalidWord;
+                        };
+
                         if is_valid {
                             state.words.insert(word);
                             WordEntryResult::Valid
@@ -104,23 +103,18 @@ fn main() -> AnyResult<()> {
                 ui::RenderResult::None => {}
                 ui::RenderResult::Exit => break,
             }
+            tokio::task::yield_now().await;
         }
         Ok::<_, AnyError>(())
     };
 
-    let timer = async {
-        tokio::time::sleep(Duration::from_secs(/* 180 */ 30)).await;
-    };
-
-    runtime.block_on(async {
-        tokio::select! {
-            result = gameloop => result,
-            _ = timer => Ok(())
-        }
-    })?;
+    tokio::select! {
+        _ = timer => Ok(()),
+        result = gameloop => result
+    }?;
 
     {
-        let mut terminal = TERMINAL.lock()?;
+        let mut terminal = TERMINAL.lock().unwrap();
         // restore terminal
         disable_raw_mode()?;
         execute!(

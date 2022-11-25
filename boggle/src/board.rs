@@ -45,7 +45,8 @@ fn get_letters(word: &str) -> Option<Vec<String>> {
     Some(letters)
 }
 
-async fn is_real_word(word: &str) -> AnyResult<bool> {
+#[tokio::main]
+async fn is_real_word(word: String) -> AnyResult<bool> {
     Ok(reqwest::get(format!(
         "https://api.dictionaryapi.dev/api/v2/entries/en/{}",
         word
@@ -145,7 +146,7 @@ impl BoggleBoard {
         false
     }
 
-    pub async fn is_valid_word(&self, word: &str) -> AnyResult<bool> {
+    pub fn is_valid_word(&self, word: &str) -> AnyResult<bool> {
         if word.len() < 3 {
             return Ok(false);
         }
@@ -155,7 +156,10 @@ impl BoggleBoard {
         };
 
         if self.test_letters(letters) {
-            is_real_word(word).await
+            let word = word.to_string();
+            std::thread::spawn(move || is_real_word(word))
+                .join()
+                .unwrap()
         } else {
             Ok(false)
         }

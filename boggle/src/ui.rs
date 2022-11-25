@@ -1,5 +1,8 @@
+use std::time::Duration;
+
 use crate::{AnyResult, GameState, TERMINAL};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
+use tokio::time::Instant;
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
@@ -24,10 +27,7 @@ pub enum RenderResult {
     Exit,
 }
 
-pub fn ui<F>(
-    mut event_handlers: EventHandlers<F>,
-    game_state: &mut GameState,
-) -> AnyResult<RenderResult>
+pub fn ui<F>(mut event_handlers: EventHandlers<F>, state: &mut GameState) -> AnyResult<RenderResult>
 where
     F: FnMut(String, &mut GameState) -> WordEntryResult,
 {
@@ -36,7 +36,12 @@ where
 
     terminal.hide_cursor()?;
 
-    let root = Block::default().title("Boggle").borders(Borders::ALL);
+    let root = Block::default()
+        .title(format!(
+            "Boggle: {} seconds remaining",
+            state.deadline.duration_since(Instant::now()).as_secs(),
+        ))
+        .borders(Borders::ALL);
 
     terminal.draw(|frame| {
         let size = frame.size();
@@ -54,41 +59,39 @@ where
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(layout[0]);
 
-        let Ok(event) = crossterm::event::read() else {
-                return;
-            };
-
-        if let Event::Key(key_event) = event {
-            if key_event.modifiers.contains(KeyModifiers::NONE) {
-                match key_event.code {
-                    KeyCode::Char(character) => {
-                        game_state.word_entry_buffer.push(character);
-                        word_validation_result = None;
+        if let Ok(true) = crossterm::event::poll(Duration::from_millis(500)) {
+            if let Ok(Event::Key(key_event)) = crossterm::event::read() {
+                if key_event.modifiers.contains(KeyModifiers::NONE) {
+                    match key_event.code {
+                        KeyCode::Char(character) => {
+                            state.word_entry_buffer.push(character);
+                            word_validation_result = None;
+                        }
+                        KeyCode::Backspace => {
+                            state.word_entry_buffer.pop();
+                        }
+                        KeyCode::Esc => result = RenderResult::Exit,
+                        KeyCode::Enter | KeyCode::Tab => {
+                            word_validation_result = Some((event_handlers.word_entered)(
+                                std::mem::take(&mut state.word_entry_buffer).to_uppercase(),
+                                state,
+                            ));
+                        }
+                        KeyCode::Down => {
+                            let GameState { words_scroll, .. } = state;
+                            *words_scroll = words_scroll.saturating_add(1);
+                        }
+                        KeyCode::Up => {
+                            let GameState { words_scroll, .. } = state;
+                            *words_scroll = words_scroll.saturating_sub(1_usize);
+                        }
+                        _ => (),
                     }
-                    KeyCode::Backspace => {
-                        game_state.word_entry_buffer.pop();
-                    }
-                    KeyCode::Esc => result = RenderResult::Exit,
-                    KeyCode::Enter | KeyCode::Tab => {
-                        word_validation_result = Some((event_handlers.word_entered)(
-                            std::mem::take(&mut game_state.word_entry_buffer).to_uppercase(),
-                            game_state,
-                        ));
-                    }
-                    KeyCode::Down => {
-                        let GameState { words_scroll, .. } = game_state;
-                        *words_scroll = words_scroll.saturating_add(1);
-                    }
-                    KeyCode::Up => {
-                        let GameState { words_scroll, .. } = game_state;
-                        *words_scroll = words_scroll.saturating_sub(1_usize);
-                    }
-                    _ => (),
                 }
             }
         }
 
-        let game_grid = Table::new(game_state.board.to_rows())
+        let game_grid = Table::new(state.board.to_rows())
             .widths(&[
                 Constraint::Length(4),
                 Constraint::Length(4),
@@ -99,7 +102,7 @@ where
             .block(Block::default().borders(Borders::ALL));
 
         let input = Paragraph::new(Spans::from(vec![
-            Span::raw(game_state.word_entry_buffer.clone()),
+            Span::raw(state.word_entry_buffer.clone()),
             Span::styled(" ", Style::default().bg(Color::DarkGray)),
         ]))
         .block(
@@ -122,7 +125,7 @@ where
                 words_scroll,
                 words,
                 ..
-            } = game_state;
+            } = state;
 
             List::new(if words.is_empty() {
                 Vec::new()
@@ -138,7 +141,11 @@ where
                     .map(|&word| ListItem::new(word.clone()))
                     .collect()
             })
-            .block(Block::default().title("Words").borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title(format!("Words | {} discovered", words.len()))
+                    .borders(Borders::ALL),
+            )
         };
 
         frame.render_widget(Clear, size);
