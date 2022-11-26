@@ -7,12 +7,14 @@ use crossterm::{
 };
 use lazy_static::lazy_static;
 use std::{
+    cell::RefCell,
     collections::HashSet,
     io::{self, Stdout},
+    rc::Rc,
     sync::Mutex,
     time::Duration,
 };
-use tokio::time::Instant;
+use tokio::{sync::oneshot::channel, time::Instant};
 use tui::{backend::CrosstermBackend, Terminal};
 use ui::WordEntryResult;
 
@@ -83,22 +85,21 @@ async fn main() -> AnyResult<()> {
     let gameloop = async {
         loop {
             let render_result = ui::ui(
-                ui::EventHandlers {
-                    word_entered: |word, state| {
-                        let Ok(is_valid) = state.board.is_valid_word(&word) else {
-                            return WordEntryResult::InvalidWord;
-                        };
+                ui::EventHandlers::new(|word, board, words| async {
+                    let Ok(is_valid) = board.is_valid_word(&word.clone()).await else {
+                        return WordEntryResult::InvalidWord;
+                    };
 
-                        if is_valid {
-                            state.words.insert(word);
-                            WordEntryResult::Valid
-                        } else {
-                            WordEntryResult::InvalidWord
-                        }
-                    },
-                },
+                    if is_valid {
+                        words.insert(word);
+                        WordEntryResult::Valid
+                    } else {
+                        WordEntryResult::InvalidWord
+                    }
+                }),
                 &mut state,
-            )?;
+            )
+            .await?;
             match render_result {
                 ui::RenderResult::None => {}
                 ui::RenderResult::Exit => break,
