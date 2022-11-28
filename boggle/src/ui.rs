@@ -1,7 +1,7 @@
-use std::{collections::HashSet, future::Future, time::Duration};
-
-use crate::{board::BoggleBoard, AnyResult, GameState, TERMINAL};
+use crate::{AnyResult, GameState, TERMINAL};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
+use futures::future::BoxFuture;
+use std::time::Duration;
 use tokio::time::Instant;
 use tui::{
     layout::{Constraint, Direction, Layout},
@@ -15,25 +15,16 @@ pub enum WordEntryResult {
     Valid,
 }
 
-pub struct EventHandlers<'a, F, Fut>
-where
-    Fut: Future<Output = WordEntryResult> + Send,
-    F: FnMut(String, &'a mut BoggleBoard, &'a mut HashSet<String>) -> Fut,
-{
-    pub word_entered: F,
-    _phantom: std::marker::PhantomData<&'a Fut>,
+type WordEnteredCallback =
+    dyn for<'a> FnMut(String, &'a mut GameState) -> BoxFuture<'a, WordEntryResult>;
+
+pub struct EventHandlers<'a> {
+    pub word_entered: &'a mut WordEnteredCallback,
 }
 
-impl<'a, F, Fut> EventHandlers<'a, F, Fut>
-where
-    Fut: Future<Output = WordEntryResult> + Send,
-    F: FnMut(String, &'a mut BoggleBoard, &'a mut HashSet<String>) -> Fut,
-{
-    pub fn new(word_entered: F) -> Self {
-        Self {
-            word_entered,
-            _phantom: std::marker::PhantomData,
-        }
+impl<'a> EventHandlers<'a> {
+    pub fn new(word_entered: &'a mut WordEnteredCallback) -> Self {
+        Self { word_entered }
     }
 }
 
@@ -42,15 +33,58 @@ pub enum RenderResult {
     Exit,
 }
 
-pub async fn ui<'a, F, Fut>(
-    mut event_handlers: EventHandlers<'a, F, Fut>,
-    state: &'a mut GameState,
-) -> AnyResult<RenderResult>
-where
-    Fut: Future<Output = WordEntryResult> + Send,
-    F: FnMut(String, &'a mut BoggleBoard, &'a mut HashSet<String>) -> Fut,
-{
-    let mut terminal = TERMINAL.lock().unwrap();
+pub async fn handle_events<'a>(
+    event_handlers: EventHandlers<'a>,
+    state: &mut GameState,
+) -> (Option<WordEntryResult>, RenderResult) {
+    let GameState {
+        word_entry_buffer,
+        words_scroll,
+        ..
+    } = state;
+
+    let mut result = (None, RenderResult::None);
+    if let Ok(true) = crossterm::event::poll(Duration::from_millis(500)) {
+        if let Ok(Event::Key(key_event)) = crossterm::event::read() {
+            if key_event.modifiers.contains(KeyModifiers::NONE) {
+                match key_event.code {
+                    KeyCode::Char(character) => {
+                        word_entry_buffer.push(character);
+                    }
+                    KeyCode::Backspace => {
+                        word_entry_buffer.pop();
+                    }
+                    KeyCode::Esc => result.1 = RenderResult::Exit,
+                    KeyCode::Enter | KeyCode::Tab => {
+                        result.0 = Some(
+                            (event_handlers.word_entered)(
+                                std::mem::take(word_entry_buffer).to_uppercase(),
+                                state,
+                            )
+                            .as_mut()
+                            .await,
+                        );
+                    }
+                    KeyCode::Down => {
+                        *words_scroll = words_scroll.saturating_add(1);
+                    }
+                    KeyCode::Up => {
+                        *words_scroll = words_scroll.saturating_sub(1_usize);
+                    }
+                    _ => (),
+                }
+            }
+        }
+    }
+
+    result
+}
+
+pub async fn ui<'a>(
+    event_handlers: EventHandlers<'a>,
+    state: &mut GameState,
+) -> AnyResult<RenderResult> {
+    let mut terminal = TERMINAL.lock().await;
 
     terminal.hide_cursor()?;
 
@@ -61,6 +95,8 @@ where
         ))
         .borders(Borders::ALL);
 
+    let (word_validation_result, result) = handle_events(event_handlers, state).await;
+
     let GameState {
         word_entry_buffer,
         words_scroll,
@@ -68,44 +104,6 @@ where
         board,
         ..
     } = state;
-
-    let (word_validation_result, result) = {
-        let mut result = (None, RenderResult::None);
-        if let Ok(true) = crossterm::event::poll(Duration::from_millis(500)) {
-            if let Ok(Event::Key(key_event)) = crossterm::event::read() {
-                if key_event.modifiers.contains(KeyModifiers::NONE) {
-                    match key_event.code {
-                        KeyCode::Char(character) => {
-                            word_entry_buffer.push(character);
-                        }
-                        KeyCode::Backspace => {
-                            word_entry_buffer.pop();
-                        }
-                        KeyCode::Esc => result.1 = RenderResult::Exit,
-                        KeyCode::Enter | KeyCode::Tab => {
-                            result.0 = Some(
-                                (event_handlers.word_entered)(
-                                    std::mem::take(word_entry_buffer).to_uppercase(),
-                                    board,
-                                    words,
-                                )
-                                .await,
-                            );
-                            return Ok(RenderResult::None);
-                        }
-                        KeyCode::Down => {
-                            *words_scroll = words_scroll.saturating_add(1);
-                        }
-                        KeyCode::Up => {
-                            *words_scroll = words_scroll.saturating_sub(1_usize);
-                        }
-                        _ => (),
-                    }
-                }
-            }
-        }
-        result
-    };
 
     let game_grid = Table::new(board.to_rows())
         .widths(&[

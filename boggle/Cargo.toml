@@ -11,4 +11,5 @@ crossterm = "0.25"
 lazy_static = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
+futures = { workspace = true }
 rand = "0.8"

@@ -5,14 +5,14 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use futures::FutureExt;
 use lazy_static::lazy_static;
 use std::{
     collections::HashSet,
     io::{self, Stdout},
-    sync::Mutex,
     time::Duration,
 };
-use tokio::{time::Instant};
+use tokio::{sync::Mutex, time::Instant};
 use tui::{backend::CrosstermBackend, Terminal};
 use ui::WordEntryResult;
 
@@ -83,17 +83,20 @@ async fn main() -> AnyResult<()> {
     let gameloop = async {
         loop {
             let render_result = ui::ui(
-                ui::EventHandlers::new(|word, board, words| async {
-                    let Ok(is_valid) = board.is_valid_word(&word.clone()).await else {
-                        return WordEntryResult::InvalidWord;
-                    };
+                ui::EventHandlers::new(&mut |word: String, GameState { words, board, .. }| {
+                    async {
+                        let Ok(is_valid) = board.is_valid_word(&word.clone()).await else {
+                            return WordEntryResult::InvalidWord;
+                        };
 
-                    if is_valid {
-                        words.insert(word);
-                        WordEntryResult::Valid
-                    } else {
-                        WordEntryResult::InvalidWord
+                        if is_valid {
+                            words.insert(word);
+                            WordEntryResult::Valid
+                        } else {
+                            WordEntryResult::InvalidWord
+                        }
                     }
+                    .boxed()
                 }),
                 &mut state,
             )
@@ -113,7 +116,7 @@ async fn main() -> AnyResult<()> {
     }?;
 
     {
-        let mut terminal = TERMINAL.lock().unwrap();
+        let mut terminal = TERMINAL.lock().await;
         // restore terminal
         disable_raw_mode()?;
         execute!(
