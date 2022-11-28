@@ -7,14 +7,12 @@ use crossterm::{
 };
 use lazy_static::lazy_static;
 use std::{
-    cell::RefCell,
     collections::HashSet,
     io::{self, Stdout},
-    rc::Rc,
     sync::Mutex,
     time::Duration,
 };
-use tokio::{sync::oneshot::channel, time::Instant};
+use tokio::{time::Instant};
 use tui::{backend::CrosstermBackend, Terminal};
 use ui::WordEntryResult;
 

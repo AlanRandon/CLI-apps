@@ -15,18 +15,18 @@ pub enum WordEntryResult {
     Valid,
 }
 
-pub struct EventHandlers<'a, 'b, F, Fut>
+pub struct EventHandlers<'a, F, Fut>
 where
-    Fut: 'b + Future<Output = WordEntryResult> + Send,
+    Fut: Future<Output = WordEntryResult> + Send,
     F: FnMut(String, &'a mut BoggleBoard, &'a mut HashSet<String>) -> Fut,
 {
     pub word_entered: F,
-    _phantom: std::marker::PhantomData<&'a &'b Fut>,
+    _phantom: std::marker::PhantomData<&'a Fut>,
 }
 
-impl<'a, 'b, F, Fut> EventHandlers<'a, 'b, F, Fut>
+impl<'a, F, Fut> EventHandlers<'a, F, Fut>
 where
-    Fut: 'b + Future<Output = WordEntryResult> + Send,
+    Fut: Future<Output = WordEntryResult> + Send,
     F: FnMut(String, &'a mut BoggleBoard, &'a mut HashSet<String>) -> Fut,
 {
     pub fn new(word_entered: F) -> Self {
@@ -42,12 +42,12 @@ pub enum RenderResult {
     Exit,
 }
 
-pub async fn ui<'a, 'b, F, Fut>(
-    mut event_handlers: EventHandlers<'a, 'b, F, Fut>,
+pub async fn ui<'a, F, Fut>(
+    mut event_handlers: EventHandlers<'a, F, Fut>,
     state: &'a mut GameState,
 ) -> AnyResult<RenderResult>
 where
-    Fut: 'b + Future<Output = WordEntryResult> + Send,
+    Fut: Future<Output = WordEntryResult> + Send,
     F: FnMut(String, &'a mut BoggleBoard, &'a mut HashSet<String>) -> Fut,
 {
     let mut terminal = TERMINAL.lock().unwrap();
@@ -66,7 +66,7 @@ where
         words_scroll,
         words,
         board,
-        deadline,
+        ..
     } = state;
 
     let (word_validation_result, result) = {
