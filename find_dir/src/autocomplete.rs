@@ -99,12 +99,9 @@ impl Autocomplete for DirectoriesAutocomplete {
         Ok(match highlighted_suggestion {
             Some(suggestion) => {
                 if suggestion == ".." {
-                    match self.search_dir.parent() {
-                        Some(path) => {
-                            Replacement::Some(format!("{}{}", path.display(), path::MAIN_SEPARATOR))
-                        }
-                        None => Replacement::None,
-                    }
+                    self.search_dir
+                        .parent()
+                        .map(|path| format!("{}{}", path.display(), path::MAIN_SEPARATOR))
                 } else {
                     Replacement::Some(format!(
                         "{}{}{}{}",

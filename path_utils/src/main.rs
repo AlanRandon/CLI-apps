@@ -165,7 +165,7 @@ impl Action {
         let programs = get_programs()?;
         for path in programs {
             if let Some(path) = check_path_callback(&path) {
-                println!("{}", path);
+                println!("{path}");
                 if !should_search_all {
                     break;
                 }
