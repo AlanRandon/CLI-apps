@@ -1,9 +1,6 @@
 [workspace]
 members = [
-    "path_utils",
-    "find_dir",
-    "is_prime",
-    "boggle"
+    "crates/*",
 ]
 
 [workspace.dependencies]
