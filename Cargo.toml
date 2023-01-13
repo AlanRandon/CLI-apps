@@ -12,3 +12,6 @@ lazy_static = "1.4"
 reqwest = "0.11"
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
+palette = "0.6"
+image = "0.24"
+rayon = "1.6"
