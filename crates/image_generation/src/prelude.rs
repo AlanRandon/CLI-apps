@@ -1,7 +1,13 @@
-use image::ImageBuffer;
-use palette::{FromColor, Pixel, Srgb};
-use rayon::prelude::*;
+pub use image::ImageBuffer;
+pub use palette::{FromColor, Hsl, Pixel, Srgb};
+pub use rayon::prelude::*;
 use std::sync::Arc;
+
+#[cfg(debug_assertions)]
+pub const OUTPUT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/output.png");
+
+#[cfg(not(debug_assertions))]
+pub const OUTPUT_PATH: &str = "output.png";
 
 pub fn image_from_fn_parallel<F, P, T>(
     width: u32,

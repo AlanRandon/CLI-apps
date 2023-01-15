@@ -1,19 +1,21 @@
-use palette::Hsl;
+use clap::Parser;
 
-mod utilities;
+mod designs;
+mod prelude;
 
-#[cfg(debug_assertions)]
-const OUTPUT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/output.png");
-
-#[cfg(not(debug_assertions))]
-const OUTPUT_PATH: &str = "output.png";
+/// A simple program to test the primality of a number
+#[derive(Parser, Debug)]
+#[command(author, version)]
+struct Args {
+    // The primality test to use
+    #[arg(long, short, value_enum)]
+    design: designs::Design,
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    utilities::image_from_fn_parallel(360, 64, |x, _| {
-        let x = f64::from(x);
-        Hsl::new(x, 0.9, 0.6)
-    })
-    .save(OUTPUT_PATH)?;
+    let args = Args::parse();
+
+    args.design.draw()?;
 
     Ok(())
 }
