@@ -7,4 +7,5 @@ edition = "2021"
 image = { workspace = true }
 palette = { workspace = true }
 rayon = { workspace = true }
+imageproc = { workspace = true }
 clap = { workspace = true }
