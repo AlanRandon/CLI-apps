@@ -9,3 +9,5 @@ palette = { workspace = true }
 rayon = { workspace = true }
 imageproc = { workspace = true }
 clap = { workspace = true }
+itertools = { workspace = true }
+lazy_static = { workspace = true }

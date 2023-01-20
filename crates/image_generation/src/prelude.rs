@@ -36,3 +36,11 @@ where
     )
     .unwrap()
 }
+
+pub fn to_rgb<P, T>(color: P) -> image::Rgb<u8>
+where
+    Srgb<T>: FromColor<P>,
+    T: palette::Component + palette::IntoComponent<u8>,
+{
+    image::Rgb(Srgb::from_color(color).into_format().into_raw::<[_; 3]>())
+}

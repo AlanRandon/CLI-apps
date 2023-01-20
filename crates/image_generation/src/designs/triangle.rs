@@ -1,43 +1,50 @@
 use crate::prelude::*;
 use image::Rgb;
 use imageproc::{drawing::draw_polygon_mut, point::Point};
-use std::f64::consts::TAU;
 
-const SIZE: i32 = 300;
+const SIZE: u32 = 1024;
+const PADDING: u32 = 50;
+const ITERATIONS: u32 = 7;
 
-fn draw_triangles(image: &mut RgbImage, verticies: [Point<f64>; 3], depth: u32, max_depth: u32) {
-    if depth == max_depth {
-        draw_polygon_mut(
-            image,
-            &verticies.map(|point| Point::new(point.x as i32, point.y as i32)),
-            Rgb::from([255, 255, 255]),
-        )
+fn draw_triangles(image: &mut RgbImage, vertices: [Point<f64>; 3], iterations: u32) {
+    if iterations == 0 {
+        let vertices = vertices.map(|point| Point::new(point.x as i32, point.y as i32));
+
+        draw_polygon_mut(image, &vertices, Rgb::from([255, 255, 255]))
     } else {
-        let middle_side_1 = middle(verticies[0], verticies[1]);
-        let middle_side_2 = middle(verticies[0], verticies[2]);
-        let middle_side_3 = middle(verticies[2], verticies[1]);
+        for index in 0..3 {
+            let mut vertices = vertices.to_vec();
+            let outer_vertex = vertices.swap_remove(index);
+            for vertex in vertices.iter_mut() {
+                *vertex = midpoint(*vertex, outer_vertex);
+            }
 
-        let depth = depth - 1;
-
-        draw_triangles(
-            image,
-            [middle_side_1, middle_side_2, center],
-            depth,
-            max_depth,
-        )
+            draw_triangles(
+                image,
+                [outer_vertex, vertices[1], vertices[0]],
+                iterations - 1,
+            );
+        }
     }
 }
 
-fn middle(a: Point<f64>, b: Point<f64>) -> Point<f64> {
-    Point::new(a.x + b.x / 2.0, a.y + b.y / 2.0)
+fn midpoint(a: Point<f64>, b: Point<f64>) -> Point<f64> {
+    Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)
 }
 
-fn sierpinski(image: &mut RgbImage) {}
-
 pub fn draw() -> Result<(), Box<dyn std::error::Error>> {
-    let mut image = RgbImage::new(SIZE as u32, SIZE as u32);
+    let padding = f64::from(PADDING);
+    let size = f64::from(SIZE);
+    let side_length = f64::from(SIZE - PADDING * 2);
+    let base_height = size - padding;
 
-    sierpinski(&mut image);
+    let a = Point::new(padding, base_height);
+    let b = Point::new(side_length + padding, base_height);
+    let c = Point::new((a.x + b.x) / 2.0, a.y - side_length * (3f64.sqrt() / 2.0));
+
+    let mut image = RgbImage::from_pixel(SIZE, SIZE, to_rgb(Hsl::new(230.0, 0.6, 0.2)));
+
+    draw_triangles(&mut image, [a, b, c], ITERATIONS);
 
     image.save(OUTPUT_PATH)?;
 
