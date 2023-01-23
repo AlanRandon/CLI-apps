@@ -8,7 +8,7 @@ pub enum Design {
 }
 
 impl Design {
-    pub fn draw(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn draw(self) -> Result<(), Box<dyn std::error::Error>> {
         match self {
             Self::SimpleExample => simple_example::draw(),
             Self::Triangle => triangle::draw(),
