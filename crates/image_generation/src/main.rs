@@ -1,23 +1,29 @@
 #![warn(clippy::pedantic, clippy::nursery)]
 
+use crate::prelude::*;
 use clap::Parser;
 
 mod designs;
 mod prelude;
 
-/// A simple program to test the primality of a number
 #[derive(Parser, Debug)]
 #[command(author, version)]
 struct Args {
-    // The primality test to use
-    #[arg(long, short, value_enum)]
+    #[command(subcommand)]
     design: designs::Design,
+
+    /// The file path where the output should be saved
+    #[arg(long, short, default_value_t = DEFAULT_OUTPUT_PATH.to_string())]
+    output_path: String,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Args::parse();
+    let Args {
+        design,
+        output_path,
+    } = Args::parse();
 
-    args.design.draw()?;
+    design.draw().save(output_path)?;
 
     Ok(())
 }

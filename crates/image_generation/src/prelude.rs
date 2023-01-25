@@ -4,10 +4,10 @@ pub use rayon::prelude::*;
 use std::sync::Arc;
 
 #[cfg(debug_assertions)]
-pub const OUTPUT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/output.png");
+pub const DEFAULT_OUTPUT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/output.png");
 
 #[cfg(not(debug_assertions))]
-pub const OUTPUT_PATH: &str = "output.png";
+pub const DEFAULT_OUTPUT_PATH: &str = "output.png";
 
 pub fn image_from_fn_parallel<F, P, T>(width: u32, height: u32, generate: F) -> RgbImage
 where
