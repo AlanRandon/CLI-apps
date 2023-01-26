@@ -11,3 +11,4 @@ imageproc = { workspace = true }
 clap = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
+num-complex = "0.4"
