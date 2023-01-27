@@ -1,4 +1,4 @@
-use image::RgbImage;
+use crate::prelude::*;
 
 mod hsl_example;
 mod julia_set;
@@ -21,10 +21,10 @@ pub enum Design {
 }
 
 impl Design {
-    pub fn draw(self) -> RgbImage {
+    pub fn draw(self) -> ImageResult {
         match self {
-            Self::HslExample => hsl_example::draw(),
-            Self::Triangle { args } => triangle::draw(args),
+            Self::HslExample => Ok(hsl_example::draw()),
+            Self::Triangle { args } => Ok(triangle::draw(args)),
             Self::JuliaSet { args } => julia_set::draw(args),
         }
     }

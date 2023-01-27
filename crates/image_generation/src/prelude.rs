@@ -9,6 +9,8 @@ pub const DEFAULT_OUTPUT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/outp
 #[cfg(not(debug_assertions))]
 pub const DEFAULT_OUTPUT_PATH: &str = "output.png";
 
+pub type ImageResult = Result<RgbImage, Box<dyn std::error::Error>>;
+
 pub fn image_from_fn_parallel<F, P, T>(width: u32, height: u32, generate: F) -> RgbImage
 where
     F: Fn(u32, u32) -> P + Send + Sync,

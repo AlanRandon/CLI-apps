@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         output_path,
     } = Args::parse();
 
-    design.draw().save(output_path)?;
+    design.draw()?.save(output_path)?;
 
     Ok(())
 }
