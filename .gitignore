@@ -15,3 +15,11 @@ Cargo.lock
 
 # Hide output of image generation crates
 *image*/output.*
+
+**/node_modules
+
+**/*lock*
+
+**/.dist
+
+crates/webgl/**.js

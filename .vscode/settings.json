@@ -1,6 +1,5 @@
 {
-  "remote.extensionKind": {
-    "asvetliakov.vscode-neovim": ["workspace"]
-  },
-  "vscode-neovim.neovimExecutablePaths.linux": "/home/linuxbrew/.linuxbrew/bin/nvim"
+  "files.exclude": {
+    "crates/webgl/*.js": true
+  }
 }
