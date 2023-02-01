@@ -2,10 +2,11 @@ import express from "express"
 import fs from "node:fs/promises"
 import path from "node:path"
 
-// Windows
-// const dirname = path.dirname(import.meta.url).replace(/^file:\/\/\//gms, "")
-// Codespaces
-const dirname = path.dirname(import.meta.url).replace(/^file:\/\//gms, "")
+const onCodespace = false
+
+const dirname = path
+  .dirname(import.meta.url)
+  .replace(onCodespace ? /^file:\/\//gms : /^file:\/\/\//gms, "")
 
 const resolve = (...paths: string[]) => [dirname, ...paths].join("/")
 
@@ -26,6 +27,10 @@ app.get("/", (_request, response) => {
   response.send(indexPage)
 })
 
-app.listen(8080, "localhost")
+if (onCodespace) {
+  app.listen(3000)
+} else {
+  app.listen(3000, "localhost")
+}
 
-console.log("Started: http://localhost:8080")
+console.log("Started: http://localhost:3000")

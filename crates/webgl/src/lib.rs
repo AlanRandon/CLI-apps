@@ -1,4 +1,3 @@
-use js_sys::Float32Array;
 use three_d::*;
 use wasm_bindgen::{prelude::*, JsCast};
 
