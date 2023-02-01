@@ -1,81 +1,84 @@
-use three_d::*;
-use wasm_bindgen::{prelude::*, JsCast};
+use three_d::{
+    prelude::*, AmbientLight, Attenuation, Camera, ClearState, CpuMesh, FrameInput, FrameOutput,
+    Gm, Mesh, PhysicalMaterial, SpotLight, Window, WindowSettings,
+};
+use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
-    #[cfg(debug_assertions)]
-    {
-        console_error_panic_hook::set_once();
-        console_log::init_with_level(log::Level::Trace).expect("error initializing log");
-        log::info!("Hello from Rust!");
-    }
+    console_error_panic_hook::set_once();
+    console_log::init_with_level(log::Level::Trace).expect("error initializing log");
+    log::info!("Hello from Rust!");
+
+    run()?;
 
     Ok(())
 }
 
 fn run() -> Result<(), JsValue> {
     let window = Window::new(WindowSettings {
-        title: "Triangle!".to_string(),
-        max_size: Some((1280, 720)),
+        title: "WebGL!".to_string(),
         ..Default::default()
     })
     .unwrap();
 
-    // Get the graphics context from the window
     let context = window.gl();
 
-    // Create a camera
+    let target = vec3(0.0, 0.0, 0.0);
+    let scene_radius: f32 = 6.0;
     let mut camera = Camera::new_perspective(
         window.viewport(),
-        vec3(0.0, 0.0, 2.0),
-        vec3(0.0, 0.0, 0.0),
+        target + scene_radius * vec3(0.1, 0.1, 0.1).normalize(),
+        target,
         vec3(0.0, 1.0, 0.0),
         degrees(45.0),
         0.1,
-        10.0,
+        1000.0,
     );
 
-    // Create a CPU-side mesh consisting of a single colored triangle
-    let positions = vec![
-        vec3(0.5, -0.5, 0.0),  // bottom right
-        vec3(-0.5, -0.5, 0.0), // bottom left
-        vec3(0.0, 0.5, 0.0),   // top
-    ];
-    let colors = vec![
-        Color::new(255, 0, 0, 255), // bottom right
-        Color::new(0, 255, 0, 255), // bottom left
-        Color::new(0, 0, 255, 255), // top
-    ];
-    let cpu_mesh = CpuMesh {
-        positions: Positions::F32(positions),
-        colors: Some(colors),
-        ..Default::default()
-    };
+    let cpu_mesh = CpuMesh::cube();
 
-    // Construct a model, with a default color material, thereby transferring the mesh data to the GPU
-    let mut model = Gm::new(Mesh::new(&context, &cpu_mesh), ColorMaterial::default());
+    let mut model = Gm::new(
+        Mesh::new(&context, &cpu_mesh),
+        PhysicalMaterial {
+            albedo: Color::new(0, 200, 150, 255),
+            ..Default::default()
+        },
+    );
 
-    // Add an animation to the triangle.
-    // model.set_animation(|time| Mat4::from_angle_y(radians(time * 0.005)));
+    let light = SpotLight::new(
+        &context,
+        0.7,
+        Color::WHITE,
+        &vec3(0.0, 1.5, 0.0),
+        &vec3(0.0, -1.0, 0.0),
+        Rad::full_turn(),
+        Attenuation::default(),
+    );
 
-    // Start the main render loop
+    let ambient_light = AmbientLight::new(&context, 0.1, Color::WHITE);
+
+    let turn = Rad::full_turn();
+
     window.render_loop(move |frame_input: FrameInput| {
-        // Ensure the viewport matches the current window viewport which changes if the window is resized
         camera.set_viewport(frame_input.viewport);
 
-        // Update the animation of the triangle
-        // model.animate(frame_input.accumulated_time as f32);
+        let time = (frame_input.accumulated_time / 5000.0) as f32;
 
-        // Get the screen render target to be able to render something on the screen
+        let turn = Matrix4::from_angle_x(turn * time)
+            * Matrix4::from_angle_y(turn * time)
+            * Matrix4::from_angle_z(turn * time);
+
+        model.set_transformation(turn);
+
         frame_input
             .screen()
-            // Clear the color and depth of the screen render target
-            .clear(ClearState::color_and_depth(0.8, 0.8, 0.8, 1.0, 1.0))
-            // Render the triangle with the color material which uses the per vertex colors defined at construction
-            .render(&camera, &model, &[]);
+            .clear(ClearState::color_and_depth(1.0, 1.0, 1.0, 1.0, 1.0))
+            .render(&camera, &model, &[&light, &ambient_light]);
 
-        // Returns default frame output to end the frame
-        FrameOutput::default()
+        FrameOutput {
+            ..Default::default()
+        }
     });
 
     Ok(())

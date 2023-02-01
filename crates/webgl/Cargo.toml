@@ -12,7 +12,6 @@ console_error_panic_hook = "0.1"
 log = "0.4"
 console_log = { version = "0.2", features = ["color"] }
 js-sys = "0.3"
-# kiss3d = { version = "0.35", features = [ "conrod" ] }
 three-d = "0.14"
 
 [dependencies.web-sys]
