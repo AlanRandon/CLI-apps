@@ -12,7 +12,7 @@
       "shallow": false
     }
   },
-  "postCreateCommand": "yarn global add @devcontainers/cli && brew install neovim"
+  "postCreateCommand": "yarn global add @devcontainers/cli"
 
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
   // "forwardPorts": [],

@@ -2,10 +2,15 @@ import express from "express"
 import fs from "node:fs/promises"
 import path from "node:path"
 
-const dirname = path.dirname(import.meta.url).replace(/^file:\/\/\//gms, "")
+// Windows
+// const dirname = path.dirname(import.meta.url).replace(/^file:\/\/\//gms, "")
+// Codespaces
+const dirname = path.dirname(import.meta.url).replace(/^file:\/\//gms, "")
+
+const resolve = (...paths: string[]) => [dirname, ...paths].join("/")
 
 const read = async (...paths: string[]) => {
-  return await fs.readFile(path.resolve(dirname, ...paths), "utf-8")
+  return await fs.readFile(resolve(...paths), "utf-8")
 }
 
 const indexPage = (await read("index.html")).replace(
@@ -21,6 +26,6 @@ app.get("/", (_request, response) => {
   response.send(indexPage)
 })
 
-app.listen(3000, "localhost")
+app.listen(8080, "localhost")
 
-console.log("Started: http://localhost:3000")
+console.log("Started: http://localhost:8080")
