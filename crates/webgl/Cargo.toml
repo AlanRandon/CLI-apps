@@ -13,6 +13,8 @@ log = "0.4"
 console_log = { version = "0.2", features = ["color"] }
 js-sys = "0.3"
 three-d = "0.14"
+num-complex = { workspace = true }
+noise = "0.8"
 
 [dependencies.web-sys]
 version = "0.3"
