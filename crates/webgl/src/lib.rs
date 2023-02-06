@@ -1,8 +1,8 @@
-use std::f32::consts::TAU;
-
+use js_sys::Math::random;
+use rand::prelude::*;
 use three_d::{
     prelude::*, AmbientLight, Attenuation, Camera, ClearState, CpuMesh, FrameInput, FrameOutput,
-    Gm, Mesh, OrbitControl, PhysicalMaterial, Positions, SpotLight, Window, WindowSettings,
+    Gm, Mesh, OrbitControl, PhysicalMaterial, SpotLight, Window, WindowSettings,
 };
 use wasm_bindgen::prelude::*;
 
@@ -28,40 +28,51 @@ fn run() -> Result<(), JsValue> {
 
     let context = window.gl();
 
-    let target = vec3(0.0, 0.0, 0.0);
-    let scene_radius: f32 = 50.0;
     let mut camera = Camera::new_perspective(
         window.viewport(),
-        target + scene_radius * vec3(0.1, 0.0, 0.0).normalize(),
-        target,
+        vec3(30.0, 0.0, -30.0),
+        vec3(0.0, 0.0, 0.0),
         vec3(0.0, 1.0, 0.0),
         degrees(45.0),
         0.1,
         1000.0,
     );
-    let mut controls = OrbitControl::new(target, 10.0, 300.0);
+    let mut controls = OrbitControl::new(vec3(0.0, 0.0, 0.0), 10.0, 300.0);
 
-    let mut mesh = CpuMesh {
-        name: String::from("model"),
-        positions: positions::ConeBuilder::new()
-            .with_height(10.0)
-            .with_radius(3.0)
-            .with_sector_count(10)
-            .build(),
+    let material = PhysicalMaterial {
+        albedo: Color::new(230, 225, 250, 255),
+        metallic: 0.5,
+        roughness: 0.7,
         ..Default::default()
     };
 
-    mesh.compute_normals();
+    let mut rng = thread_rng();
 
-    let model = Gm::new(
-        Mesh::new(&context, &mesh),
-        PhysicalMaterial {
-            albedo: Color::new(230, 225, 250, 255),
-            metallic: 0.5,
-            roughness: 0.7,
-            ..Default::default()
-        },
-    );
+    let models = (0..20)
+        .map(|_| {
+            let direction = vec3(
+                rng.gen_range(-1.0..1.0),
+                rng.gen_range(-1.0..1.0),
+                rng.gen_range(-1.0..1.0),
+            );
+
+            let mut mesh = CpuMesh {
+                name: String::from("model"),
+                positions: positions::ConeBuilder::new()
+                    .with_height(10.0)
+                    .with_radius(3.0)
+                    .with_sector_count(10)
+                    .with_origin(vec3(0.0, 0.0, 0.0))
+                    .with_direction(direction)
+                    .build(),
+                ..Default::default()
+            };
+
+            mesh.compute_normals();
+
+            Gm::new(Mesh::new(&context, &mesh), material.clone())
+        })
+        .collect::<Vec<_>>();
 
     let mut light = SpotLight::new(
         &context,
@@ -88,7 +99,7 @@ fn run() -> Result<(), JsValue> {
         frame_input
             .screen()
             .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 1.0, 1.0))
-            .render(&camera, &model, &[&light, &ambient_light]);
+            .render(&camera, &models, &[&light, &ambient_light]);
 
         FrameOutput {
             ..Default::default()
