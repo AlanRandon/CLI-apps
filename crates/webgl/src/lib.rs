@@ -1,4 +1,3 @@
-use js_sys::Math::random;
 use rand::prelude::*;
 use three_d::{
     prelude::*, AmbientLight, Attenuation, Camera, ClearState, CpuMesh, FrameInput, FrameOutput,
