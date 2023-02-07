@@ -1,7 +1,7 @@
 use rand::prelude::*;
 use three_d::{
-    prelude::*, AmbientLight, Attenuation, Camera, ClearState, CpuMesh, FrameInput, FrameOutput,
-    Gm, Mesh, OrbitControl, PhysicalMaterial, SpotLight, Window, WindowSettings,
+    prelude::*, AmbientLight, Attenuation, Axes, Camera, ClearState, CpuMesh, FrameInput,
+    FrameOutput, Gm, Mesh, OrbitControl, PhysicalMaterial, SpotLight, Window, WindowSettings,
 };
 use wasm_bindgen::prelude::*;
 
@@ -47,21 +47,25 @@ fn run() -> Result<(), JsValue> {
 
     let mut rng = thread_rng();
 
-    let models = (0..20)
+    let models = (0..200)
         .map(|_| {
-            let direction = vec3(
+            let direction = vec3::<f32>(
                 rng.gen_range(-1.0..1.0),
                 rng.gen_range(-1.0..1.0),
                 rng.gen_range(-1.0..1.0),
             );
 
+            let height = 50.0;
+
             let mut mesh = CpuMesh {
                 name: String::from("model"),
                 positions: positions::ConeBuilder::new()
-                    .with_height(10.0)
-                    .with_radius(3.0)
+                    .with_height(height - 0.0001)
+                    .with_radius(1.0)
                     .with_sector_count(10)
-                    .with_origin(vec3(0.0, 0.0, 0.0))
+                    .with_origin(
+                        vec3(-direction.x, -direction.y, -direction.z).normalize() * height,
+                    )
                     .with_direction(direction)
                     .build(),
                 ..Default::default()
@@ -72,6 +76,8 @@ fn run() -> Result<(), JsValue> {
             Gm::new(Mesh::new(&context, &mesh), material.clone())
         })
         .collect::<Vec<_>>();
+
+    // let axes = Axes::new(&context, 0.5, 10.0);
 
     let mut light = SpotLight::new(
         &context,
@@ -99,6 +105,7 @@ fn run() -> Result<(), JsValue> {
             .screen()
             .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 1.0, 1.0))
             .render(&camera, &models, &[&light, &ambient_light]);
+        // .render(&camera, &axes, &[]);
 
         FrameOutput {
             ..Default::default()

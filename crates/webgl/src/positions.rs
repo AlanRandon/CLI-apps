@@ -205,11 +205,11 @@ impl ConeBuilder<u32, f32, f32, Vec3, Vec3> {
 
                     [
                         apex,
-                        start_vertex,
-                        end_vertex,
+                        start_vertex + origin,
+                        end_vertex + origin,
                         origin,
-                        start_vertex,
-                        end_vertex,
+                        start_vertex + origin,
+                        end_vertex + origin,
                     ]
                 })
                 .collect(),
