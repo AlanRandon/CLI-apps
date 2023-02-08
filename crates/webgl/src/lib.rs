@@ -1,7 +1,10 @@
+#![warn(clippy::pedantic, clippy::nursery)]
+#![allow(clippy::missing_errors_doc)]
+
 use rand::prelude::*;
 use three_d::{
-    prelude::*, AmbientLight, Attenuation, Axes, Camera, ClearState, CpuMesh, FrameInput,
-    FrameOutput, Gm, Mesh, OrbitControl, PhysicalMaterial, SpotLight, Window, WindowSettings,
+    prelude::*, AmbientLight, Attenuation, Camera, ClearState, CpuMesh, FrameInput, FrameOutput,
+    Gm, Mesh, OrbitControl, PhysicalMaterial, SpotLight, Window, WindowSettings,
 };
 use wasm_bindgen::prelude::*;
 
@@ -13,12 +16,12 @@ pub fn main() -> Result<(), JsValue> {
     console_log::init_with_level(log::Level::Trace).expect("error initializing log");
     log::info!("Hello from Rust!");
 
-    run()?;
+    run();
 
     Ok(())
 }
 
-fn run() -> Result<(), JsValue> {
+fn run() {
     let window = Window::new(WindowSettings {
         title: "WebGL!".to_string(),
         ..Default::default()
@@ -95,11 +98,14 @@ fn run() -> Result<(), JsValue> {
         camera.set_viewport(frame_input.viewport);
         controls.handle_events(&mut camera, &mut frame_input.events);
 
-        light.position = vec3(
-            (frame_input.accumulated_time / 100.0).sin() as f32 * 15.0,
-            30.0,
-            (frame_input.accumulated_time / 100.0).cos() as f32 * 15.0,
-        );
+        #[allow(clippy::cast_possible_truncation)]
+        {
+            light.position = vec3(
+                (frame_input.accumulated_time / 100.0).sin() as f32 * 15.0,
+                30.0,
+                (frame_input.accumulated_time / 100.0).cos() as f32 * 15.0,
+            );
+        }
 
         frame_input
             .screen()
@@ -111,6 +117,4 @@ fn run() -> Result<(), JsValue> {
             ..Default::default()
         }
     });
-
-    Ok(())
 }

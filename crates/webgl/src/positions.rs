@@ -18,7 +18,7 @@ where
 }
 
 impl ConeBuilder<(), (), (), (), ()> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             sector_count: (),
             radius: (),
@@ -36,7 +36,7 @@ where
     Origin: Copy,
     Direction: Copy,
 {
-    pub fn with_sector_count(
+    pub const fn with_sector_count(
         &self,
         sector_count: u32,
     ) -> ConeBuilder<u32, Radius, Height, Origin, Direction> {
@@ -64,7 +64,7 @@ where
     Origin: Copy,
     Direction: Copy,
 {
-    pub fn with_radius(
+    pub const fn with_radius(
         &self,
         radius: f32,
     ) -> ConeBuilder<SectorCount, f32, Height, Origin, Direction> {
@@ -92,7 +92,7 @@ where
     Origin: Copy,
     Direction: Copy,
 {
-    pub fn with_height(
+    pub const fn with_height(
         &self,
         height: f32,
     ) -> ConeBuilder<SectorCount, Radius, f32, Origin, Direction> {
@@ -120,7 +120,7 @@ where
     Height: Copy,
     Direction: Copy,
 {
-    pub fn with_origin(
+    pub const fn with_origin(
         &self,
         origin: Vec3,
     ) -> ConeBuilder<SectorCount, Radius, Height, Vec3, Direction> {
@@ -148,7 +148,7 @@ where
     Height: Copy,
     Origin: Copy,
 {
-    pub fn with_direction(
+    pub const fn with_direction(
         &self,
         direction: Vec3,
     ) -> ConeBuilder<SectorCount, Radius, Height, Origin, Vec3> {
