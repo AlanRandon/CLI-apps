@@ -31,7 +31,7 @@ impl Design {
             Self::HslExample => Ok(hsl_example::draw()),
             Self::Triangle { args } => Ok(triangle::draw(args)),
             Self::JuliaSet { args } => julia_set::draw(args),
-            Self::Waves { args } => Ok(waves::draw(args)),
+            Self::Waves { args } => Ok(waves::draw(&args)),
         }
     }
 }
