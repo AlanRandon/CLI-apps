@@ -3,6 +3,7 @@ use crate::prelude::*;
 mod hsl_example;
 mod julia_set;
 mod triangle;
+mod waves;
 
 #[derive(Debug, Clone, PartialEq, Eq, clap::Subcommand)]
 pub enum Design {
@@ -18,6 +19,10 @@ pub enum Design {
         #[command(flatten)]
         args: julia_set::Args,
     },
+    Waves {
+        #[command(flatten)]
+        args: waves::Args,
+    },
 }
 
 impl Design {
@@ -26,6 +31,7 @@ impl Design {
             Self::HslExample => Ok(hsl_example::draw()),
             Self::Triangle { args } => Ok(triangle::draw(args)),
             Self::JuliaSet { args } => julia_set::draw(args),
+            Self::Waves { args } => Ok(waves::draw(args)),
         }
     }
 }

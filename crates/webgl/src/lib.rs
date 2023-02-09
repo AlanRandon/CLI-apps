@@ -1,5 +1,9 @@
 #![warn(clippy::pedantic, clippy::nursery)]
-#![allow(clippy::missing_errors_doc)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::missing_errors_doc
+)]
 
 use rand::prelude::*;
 use three_d::{
@@ -98,14 +102,11 @@ fn run() {
         camera.set_viewport(frame_input.viewport);
         controls.handle_events(&mut camera, &mut frame_input.events);
 
-        #[allow(clippy::cast_possible_truncation)]
-        {
-            light.position = vec3(
-                (frame_input.accumulated_time / 100.0).sin() as f32 * 15.0,
-                30.0,
-                (frame_input.accumulated_time / 100.0).cos() as f32 * 15.0,
-            );
-        }
+        light.position = vec3(
+            (frame_input.accumulated_time / 100.0).sin() as f32 * 15.0,
+            30.0,
+            (frame_input.accumulated_time / 100.0).cos() as f32 * 15.0,
+        );
 
         frame_input
             .screen()
