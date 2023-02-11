@@ -5,7 +5,7 @@ mod julia_set;
 mod triangle;
 mod waves;
 
-#[derive(Debug, Clone, PartialEq, Eq, clap::Subcommand)]
+#[derive(Debug, Clone, clap::Subcommand)]
 pub enum Design {
     /// A simple example where the x of the pixel determines its hue
     HslExample,
