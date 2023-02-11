@@ -1,0 +1,66 @@
+use crate::prelude::*;
+use crossterm::{
+    cursor,
+    event::{DisableMouseCapture, EnableMouseCapture},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use std::io;
+use tui::{
+    backend::CrosstermBackend,
+    widgets::{Block, Borders, Clear},
+    Terminal,
+};
+
+pub struct Ui {
+    terminal: Terminal<CrosstermBackend<io::Stdout>>,
+}
+
+impl Ui {
+    pub fn new() -> Result<Self> {
+        let backend = CrosstermBackend::new(io::stdout());
+        let terminal = Terminal::new(backend).unwrap();
+
+        enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            EnableMouseCapture,
+            cursor::Hide
+        )?;
+
+        Ok(Self { terminal })
+    }
+
+    pub fn render(&mut self) -> Result<()> {
+        let Self { terminal } = self;
+
+        let root_block = Block::default().title("Game Of Life").borders(Borders::ALL);
+
+        terminal.draw(|frame| {
+            let size = frame.size();
+            // let root_inside_rect = root_block.inner(size);
+
+            frame.render_widget(Clear, size);
+            frame.render_widget(root_block.clone(), size);
+        })?;
+
+        Ok(())
+    }
+}
+
+impl Drop for Ui {
+    fn drop(&mut self) {
+        let Self { terminal } = self;
+
+        disable_raw_mode().unwrap();
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )
+        .unwrap();
+        terminal.show_cursor().unwrap();
+    }
+}
