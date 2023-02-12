@@ -8,6 +8,7 @@ use std::time::Duration;
 use ui::Ui;
 
 mod cell;
+mod state;
 mod ui;
 
 mod prelude {
