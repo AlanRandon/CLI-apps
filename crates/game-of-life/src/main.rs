@@ -1,10 +1,9 @@
-// TODO: Game of life itself
-// TODO: Setup a `State` struct to hold the world state
 // TODO: Use tokio to deal with events at the same time that calculations are done for the next tick
 
 use crossterm::event::{Event, KeyCode};
 use prelude::*;
-use std::time::Duration;
+use state::State;
+use std::{panic, time::Duration};
 use ui::Ui;
 
 mod cell;
@@ -16,16 +15,29 @@ mod prelude {
 }
 
 fn main() -> Result<()> {
-    let mut ui = Ui::new()?;
+    panic::set_hook({
+        let hook = panic::take_hook();
+        Box::new(move |panic_info| {
+            hook(panic_info);
+            std::thread::sleep(Duration::from_millis(3000));
+        })
+    });
+
+    let mut ui = Ui::new(State::new(10, 10))?;
     loop {
         ui.render()?;
 
-        if let Ok(true) = crossterm::event::poll(Duration::from_millis(500)) {
-            if let Ok(Event::Key(key_event)) = crossterm::event::read() {
-                if key_event.code == KeyCode::Esc {
-                    break;
+        if crossterm::event::poll(Duration::from_millis(500))? {
+            let Ok(Event::Key(key_event)) = crossterm::event::read() else {
+                 continue;
+            };
+            match key_event.code {
+                KeyCode::Esc => break,
+                KeyCode::Tab => {
+                    ui.state.tick();
                 }
-            }
+                _ => {}
+            };
         }
     }
     Ok(())

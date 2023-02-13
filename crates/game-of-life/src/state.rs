@@ -1,10 +1,14 @@
 use crate::cell::Cell;
-use crate::prelude::*;
+use itertools::Itertools;
 use rayon::prelude::*;
-use std::sync::Arc;
+use tui::{
+    layout::Constraint,
+    style::{Color, Style},
+    widgets::{self, Row, Table},
+};
 
 pub struct State {
-    cells: Vec<Arc<Cell>>,
+    cells: Vec<Cell>,
     width: usize,
     height: usize,
 }
@@ -12,7 +16,7 @@ pub struct State {
 impl State {
     pub fn new(width: usize, height: usize) -> Self {
         let length = width * height;
-        let cells = (0..length).map(|_| Arc::new(Cell::new(false))).collect();
+        let cells = (0..length).map(|_| Cell::new(false)).collect();
         Self {
             height,
             width,
@@ -20,25 +24,30 @@ impl State {
         }
     }
 
-    fn get_adjacent(&self, index: usize) -> [Arc<Cell>; 8] {
+    fn get_adjacent(&self, index: usize) -> Vec<Cell> {
         let Self {
             cells,
             width,
             height,
         } = self;
 
+        let index = index as i128;
+        let width = *width as i128;
+        let height = *height as i128;
+
         let (y, x) = (index / width, index % width);
-        [
-            cells.get((y + 1 % height) * width + x).unwrap(),
-            cells.get((y + 1 % height) * width + x - 1 % width).unwrap(),
-            cells.get((y + 1 % height) * width + x + 1 % width).unwrap(),
-            cells.get(y * width - x + 1 % width).unwrap(),
-            cells.get(y * width + x + 1 % width).unwrap(),
-            cells.get((y - 1 % height) * width + x - 1 % width).unwrap(),
-            cells.get((y - 1 % height) * width + x).unwrap(),
-            cells.get((y - 1 % height) * width + x + 1 % width).unwrap(),
-        ]
-        .map(Arc::clone)
+
+        [-1i128, 1, 0]
+            .into_iter()
+            .combinations_with_replacement(2)
+            .map(|shifts| (shifts[0], shifts[1]))
+            .map(|(x_shift, y_shift)| {
+                let x = (x + x_shift) % width;
+                let y = (y + y_shift) % height;
+                y * width + x
+            })
+            .map(|index| cells[index as usize])
+            .collect()
     }
 
     pub fn tick(&mut self) {
@@ -46,18 +55,63 @@ impl State {
             .cells
             .par_iter()
             .enumerate()
-            .map(|(index, cell)| {
-                let adjacency_count = self
+            .map(|(index, &cell)| {
+                let adjacent_alive_count = self
                     .get_adjacent(index)
                     .iter()
                     .fold(0, |acc, cell| acc + cell.alive as usize);
 
-                let next_state = match (cell.alive, adjacency_count) {};
+                let will_stay_alive = match (cell.alive, adjacent_alive_count) {
+                    // Cells with 0, 1 or 4+ neighbours die
+                    (true, 0 | 1 | 4..) => false,
+                    // Cells with 2 or 3 neighbours live
+                    (true, _) => true,
+                    // Cells with 3 neighbours become populated
+                    (false, 3) => true,
+                    // Cells without 3 neighbours stay dead
+                    (false, _) => false,
+                };
 
-                cell.clone()
+                Cell {
+                    will_stay_alive,
+                    ..cell
+                }
             })
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(Cell::tick)
             .collect::<Vec<_>>();
 
         self.cells = new_cells;
+    }
+}
+
+pub struct ToTable<'a> {
+    pub table: Table<'a>,
+    pub width_constraints: Vec<Constraint>,
+}
+
+impl<'a> From<&mut State> for ToTable<'a> {
+    fn from(State { cells, width, .. }: &mut State) -> Self {
+        let width_constraints = vec![Constraint::Length(1); *width];
+        let table = Table::new(
+            cells
+                .chunks(*width)
+                .map(|row| {
+                    row.iter().map(|cell| {
+                        widgets::Cell::from(" ").style(Style::default().bg(if cell.alive {
+                            Color::White
+                        } else {
+                            Color::DarkGray
+                        }))
+                    })
+                })
+                .map(Row::new),
+        )
+        .column_spacing(0);
+        ToTable {
+            table,
+            width_constraints,
+        }
     }
 }

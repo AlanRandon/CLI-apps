@@ -1,4 +1,7 @@
-use crate::prelude::*;
+use crate::{
+    prelude::*,
+    state::{State, ToTable},
+};
 use crossterm::{
     cursor,
     event::{DisableMouseCapture, EnableMouseCapture},
@@ -8,16 +11,17 @@ use crossterm::{
 use std::io;
 use tui::{
     backend::CrosstermBackend,
-    widgets::{Block, Borders, Clear},
+    widgets::{Block, Borders, Clear, Table},
     Terminal,
 };
 
 pub struct Ui {
     terminal: Terminal<CrosstermBackend<io::Stdout>>,
+    pub state: State,
 }
 
 impl Ui {
-    pub fn new() -> Result<Self> {
+    pub fn new(state: State) -> Result<Self> {
         let backend = CrosstermBackend::new(io::stdout());
         let terminal = Terminal::new(backend).unwrap();
 
@@ -30,20 +34,24 @@ impl Ui {
             cursor::Hide
         )?;
 
-        Ok(Self { terminal })
+        Ok(Self { terminal, state })
     }
 
     pub fn render(&mut self) -> Result<()> {
-        let Self { terminal } = self;
+        let Self { terminal, state } = self;
 
         let root_block = Block::default().title("Game Of Life").borders(Borders::ALL);
+        let ToTable {
+            table,
+            width_constraints,
+        } = state.into();
+        let table = table.widths(&width_constraints).block(root_block);
 
         terminal.draw(|frame| {
             let size = frame.size();
-            // let root_inside_rect = root_block.inner(size);
 
             frame.render_widget(Clear, size);
-            frame.render_widget(root_block.clone(), size);
+            frame.render_widget(table.clone(), size);
         })?;
 
         Ok(())
@@ -52,7 +60,7 @@ impl Ui {
 
 impl Drop for Ui {
     fn drop(&mut self) {
-        let Self { terminal } = self;
+        let Self { terminal, .. } = self;
 
         disable_raw_mode().unwrap();
         execute!(

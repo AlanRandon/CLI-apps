@@ -1,7 +1,7 @@
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Cell {
     pub alive: bool,
-    will_stay_alive: bool,
+    pub will_stay_alive: bool,
 }
 
 impl Cell {
