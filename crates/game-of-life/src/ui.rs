@@ -11,7 +11,7 @@ use crossterm::{
 use std::io;
 use tui::{
     backend::CrosstermBackend,
-    widgets::{Block, Borders, Clear, Table},
+    widgets::{Block, Borders, Clear},
     Terminal,
 };
 
@@ -52,6 +52,7 @@ impl Ui {
 
             frame.render_widget(Clear, size);
             frame.render_widget(table.clone(), size);
+            frame.set_cursor(size.width, size.height);
         })?;
 
         Ok(())

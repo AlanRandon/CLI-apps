@@ -3,7 +3,7 @@
 use crossterm::event::{Event, KeyCode};
 use prelude::*;
 use state::State;
-use std::{panic, time::Duration};
+use std::time::Duration;
 use ui::Ui;
 
 mod cell;
@@ -15,14 +15,6 @@ mod prelude {
 }
 
 fn main() -> Result<()> {
-    panic::set_hook({
-        let hook = panic::take_hook();
-        Box::new(move |panic_info| {
-            hook(panic_info);
-            std::thread::sleep(Duration::from_millis(3000));
-        })
-    });
-
     let mut ui = Ui::new(State::new(10, 10))?;
     loop {
         ui.render()?;

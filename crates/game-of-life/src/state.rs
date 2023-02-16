@@ -1,5 +1,6 @@
 use crate::cell::Cell;
 use itertools::Itertools;
+use rand::{thread_rng, Rng};
 use rayon::prelude::*;
 use tui::{
     layout::Constraint,
@@ -15,8 +16,9 @@ pub struct State {
 
 impl State {
     pub fn new(width: usize, height: usize) -> Self {
+        let mut rng = thread_rng();
         let length = width * height;
-        let cells = (0..length).map(|_| Cell::new(false)).collect();
+        let cells = (0..length).map(|_| Cell::new(rng.gen())).collect();
         Self {
             height,
             width,
@@ -40,10 +42,13 @@ impl State {
         [-1i128, 1, 0]
             .into_iter()
             .combinations_with_replacement(2)
-            .map(|shifts| (shifts[0], shifts[1]))
+            .filter_map(|shifts| match (shifts[0], shifts[1]) {
+                (0, 0) => None,
+                result => Some(result),
+            })
             .map(|(x_shift, y_shift)| {
-                let x = (x + x_shift) % width;
-                let y = (y + y_shift) % height;
+                let x = (x + x_shift).rem_euclid(width);
+                let y = (y + y_shift).rem_euclid(height);
                 y * width + x
             })
             .map(|index| cells[index as usize])

@@ -10,3 +10,4 @@ tui = { workspace = true }
 crossterm = { workspace = true }
 rayon = { workspace = true }
 itertools = { workspace = true }
+rand = { workspace = true }
