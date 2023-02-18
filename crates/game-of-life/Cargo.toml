@@ -9,6 +9,7 @@ edition = "2021"
 tui = { workspace = true }
 crossterm = { workspace = true, features = ["event-stream"] }
 rayon = { workspace = true }
-rand = { workspace = true }
+rand = { workspace = true, features = ["small_rng"] }
 tokio = { workspace = true }
 futures = { workspace = true }
+clap = { workspace = true }

@@ -1,5 +1,5 @@
 use crate::cell::Cell;
-use rand::{thread_rng, Rng};
+use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use rayon::prelude::*;
 use tui::{
     layout::Constraint,
@@ -15,13 +15,19 @@ pub struct State {
 
 impl State {
     pub fn new(width: usize, height: usize) -> Self {
-        let mut rng = thread_rng();
         let length = width * height;
-        let cells = (0..length).map(|_| Cell::new(rng.gen())).collect();
+
+        let cells = SmallRng::from_entropy()
+            .sample_iter(Standard)
+            .take(length)
+            .par_bridge()
+            .map(Cell::new)
+            .collect();
+
         Self {
-            height,
-            width,
             cells,
+            width,
+            height,
         }
     }
 
@@ -53,7 +59,12 @@ impl State {
             let y = (y + y_shift).rem_euclid(height);
             y * width + x
         })
-        .map(|index| cells[index as usize])
+        .map(
+            #[allow(clippy::cast_sign_loss)]
+            {
+                |index| cells[index as usize]
+            },
+        )
     }
 
     pub fn tick(&mut self) {
@@ -65,17 +76,15 @@ impl State {
                 let adjacent_alive_count = self
                     .get_adjacent(index)
                     .iter()
-                    .fold(0, |acc, cell| acc + cell.alive as usize);
+                    .fold(0, |acc, cell| acc + usize::from(cell.alive));
 
                 let will_stay_alive = match (cell.alive, adjacent_alive_count) {
-                    // Cells with 2 or 3 neighbours live
-                    (true, 2 | 3) => true,
-                    // Cells with 0, 1 or 4+ neighbours die
-                    (true, _) => false,
-                    // Cells with 3 neighbours become populated
-                    (false, 3) => true,
+                    // Cells with 3 neighbours become populated or stay alive
+                    // Cells with 2 neighbours also stay alive
+                    (_, 3) | (true, 2) => true,
                     // Cells without 3 neighbours stay dead
-                    (false, _) => false,
+                    // Cells with 0, 1 or 4+ neighbours die
+                    _ => false,
                 };
 
                 Cell {
