@@ -1,9 +1,9 @@
-// TODO: Use tokio to deal with events at the same time that calculations are done for the next tick
-
-use crossterm::event::{Event, KeyCode};
+use crossterm::event::{EventStream, KeyCode};
+use futures::{FutureExt, StreamExt};
 use prelude::*;
 use state::State;
 use std::time::Duration;
+use tokio::select;
 use ui::Ui;
 
 mod cell;
@@ -14,22 +14,31 @@ mod prelude {
     pub type Result<T, E = Box<dyn std::error::Error>> = std::result::Result<T, E>;
 }
 
-fn main() -> Result<()> {
-    let mut ui = Ui::new(State::new(10, 10))?;
+#[tokio::main]
+async fn main() -> Result<()> {
+    let (columns, rows) = crossterm::terminal::size()?;
+    let mut ui = Ui::new(State::new(columns as usize - 2, rows as usize - 2))?;
+    let mut event_stream = EventStream::new();
+
     loop {
         ui.render()?;
 
-        if crossterm::event::poll(Duration::from_millis(500))? {
-            let Ok(Event::Key(key_event)) = crossterm::event::read() else {
-                 continue;
-            };
-            match key_event.code {
-                KeyCode::Esc => break,
-                KeyCode::Tab => {
-                    ui.state.tick();
+        let event_listener = event_stream.next().fuse();
+        let sleeper = tokio::time::sleep(Duration::from_millis(500));
+
+        select! {
+            event = event_listener => {
+                let Some(event) = event else {
+                    continue;
+                };
+                let event = event?;
+                if event == crossterm::event::Event::Key(KeyCode::Esc.into()) {
+                    break
                 }
-                _ => {}
-            };
+            }
+            _ = sleeper => {
+                ui.state.tick()
+            }
         }
     }
     Ok(())

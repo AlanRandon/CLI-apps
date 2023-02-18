@@ -7,7 +7,8 @@ edition = "2021"
 
 [dependencies]
 tui = { workspace = true }
-crossterm = { workspace = true }
+crossterm = { workspace = true, features = ["event-stream"] }
 rayon = { workspace = true }
-itertools = { workspace = true }
 rand = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }

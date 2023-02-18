@@ -1,5 +1,4 @@
 use crate::cell::Cell;
-use itertools::Itertools;
 use rand::{thread_rng, Rng};
 use rayon::prelude::*;
 use tui::{
@@ -26,7 +25,7 @@ impl State {
         }
     }
 
-    fn get_adjacent(&self, index: usize) -> Vec<Cell> {
+    fn get_adjacent(&self, index: usize) -> [Cell; 8] {
         let Self {
             cells,
             width,
@@ -39,20 +38,22 @@ impl State {
 
         let (y, x) = (index / width, index % width);
 
-        [-1i128, 1, 0]
-            .into_iter()
-            .combinations_with_replacement(2)
-            .filter_map(|shifts| match (shifts[0], shifts[1]) {
-                (0, 0) => None,
-                result => Some(result),
-            })
-            .map(|(x_shift, y_shift)| {
-                let x = (x + x_shift).rem_euclid(width);
-                let y = (y + y_shift).rem_euclid(height);
-                y * width + x
-            })
-            .map(|index| cells[index as usize])
-            .collect()
+        [
+            (-1, -1),
+            (-1, 0),
+            (-1, 1),
+            (0, -1),
+            (0, 1),
+            (1, -1),
+            (1, 0),
+            (1, 1),
+        ]
+        .map(|(x_shift, y_shift)| {
+            let x = (x + x_shift).rem_euclid(width);
+            let y = (y + y_shift).rem_euclid(height);
+            y * width + x
+        })
+        .map(|index| cells[index as usize])
     }
 
     pub fn tick(&mut self) {
@@ -67,10 +68,10 @@ impl State {
                     .fold(0, |acc, cell| acc + cell.alive as usize);
 
                 let will_stay_alive = match (cell.alive, adjacent_alive_count) {
-                    // Cells with 0, 1 or 4+ neighbours die
-                    (true, 0 | 1 | 4..) => false,
                     // Cells with 2 or 3 neighbours live
-                    (true, _) => true,
+                    (true, 2 | 3) => true,
+                    // Cells with 0, 1 or 4+ neighbours die
+                    (true, _) => false,
                     // Cells with 3 neighbours become populated
                     (false, 3) => true,
                     // Cells without 3 neighbours stay dead
