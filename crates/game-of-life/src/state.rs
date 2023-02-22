@@ -1,14 +1,26 @@
-use crate::cell::Cell;
+use crate::prelude::*;
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use rayon::prelude::*;
-use tui::{
-    layout::Constraint,
-    style::{Color, Style},
-    widgets::{self, Row, Table},
-};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::module_name_repetitions)]
+pub enum CellState {
+    Alive = 1,
+    Dead = 0,
+}
+
+impl From<bool> for CellState {
+    fn from(alive: bool) -> Self {
+        if alive {
+            Self::Alive
+        } else {
+            Self::Dead
+        }
+    }
+}
 
 pub struct State {
-    cells: Vec<Cell>,
+    cells: Vec<CellState>,
     width: usize,
     height: usize,
 }
@@ -18,10 +30,10 @@ impl State {
         let length = width * height;
 
         let cells = SmallRng::from_entropy()
-            .sample_iter(Standard)
+            .sample_iter::<bool, _>(Standard)
             .take(length)
             .par_bridge()
-            .map(Cell::new)
+            .map(CellState::from)
             .collect();
 
         Self {
@@ -31,18 +43,29 @@ impl State {
         }
     }
 
-    fn get_adjacent(&self, index: usize) -> [Cell; 8] {
+    fn get_coordinates(&self, index: usize) -> Coordinates {
+        let Self { width, .. } = self;
+
+        let width = *width as i128;
+        let index = index as i128;
+
+        Coordinates {
+            x: index % width,
+            y: index / width,
+        }
+    }
+
+    fn get_neighbours(&self, coordinates: Coordinates) -> [CellState; 8] {
         let Self {
             cells,
             width,
             height,
         } = self;
 
-        let index = index as i128;
+        let Coordinates { x, y } = coordinates;
+
         let width = *width as i128;
         let height = *height as i128;
-
-        let (y, x) = (index / width, index % width);
 
         [
             (-1, -1),
@@ -67,66 +90,39 @@ impl State {
         )
     }
 
-    pub fn tick(&mut self) {
-        let new_cells = self
+    fn get_alive_neighbours_count(&self, coordinates: Coordinates) -> usize {
+        self.get_neighbours(coordinates)
+            .iter()
+            .fold(0, |acc, &state| acc + state as usize)
+    }
+
+    /// Tick will return an iterator containing the coordinates and state of each cell
+    pub fn next_state(&mut self) -> impl Iterator<Item = (Coordinates, CellState)> {
+        let (internal_state, state): (Vec<_>, Vec<_>) = self
             .cells
             .par_iter()
             .enumerate()
-            .map(|(index, &cell)| {
-                let adjacent_alive_count = self
-                    .get_adjacent(index)
-                    .iter()
-                    .fold(0, |acc, cell| acc + usize::from(cell.alive));
+            .map(|(index, &state)| {
+                let coordinates = self.get_coordinates(index);
 
-                let will_stay_alive = match (cell.alive, adjacent_alive_count) {
+                let next_state = match (state, self.get_alive_neighbours_count(coordinates)) {
                     // Cells with 3 neighbours become populated or stay alive
                     // Cells with 2 neighbours also stay alive
-                    (_, 3) | (true, 2) => true,
+                    (_, 3) | (CellState::Alive, 2) => CellState::Alive,
                     // Cells without 3 neighbours stay dead
                     // Cells with 0, 1 or 4+ neighbours die
-                    _ => false,
+                    _ => CellState::Dead,
                 };
 
-                Cell {
-                    will_stay_alive,
-                    ..cell
-                }
+                (coordinates, (state, next_state))
             })
             .collect::<Vec<_>>()
-            .into_par_iter()
-            .map(Cell::tick)
-            .collect::<Vec<_>>();
+            .into_iter()
+            .map(|(coordinates, (state, next_state))| (next_state, (coordinates, state)))
+            .unzip();
 
-        self.cells = new_cells;
-    }
-}
+        self.cells = internal_state;
 
-pub struct ToTable<'a> {
-    pub table: Table<'a>,
-    pub width_constraints: Vec<Constraint>,
-}
-
-impl<'a> From<&mut State> for ToTable<'a> {
-    fn from(State { cells, width, .. }: &mut State) -> Self {
-        let width_constraints = vec![Constraint::Length(1); *width];
-        let table = Table::new(
-            cells
-                .chunks(*width)
-                .map(|row| {
-                    row.iter().map(|cell| {
-                        widgets::Cell::from(" ").style(Style::default().bg(if cell.alive {
-                            Color::White
-                        } else {
-                            Color::DarkGray
-                        }))
-                    })
-                })
-                .map(Row::new),
-        )
-        .column_spacing(0);
-        ToTable {
-            table,
-            width_constraints,
-        }
+        state.into_iter()
     }
 }

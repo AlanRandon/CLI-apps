@@ -1,59 +1,63 @@
 use crate::{
     prelude::*,
-    state::{State, ToTable},
+    state::{CellState, State},
 };
 use crossterm::{
-    cursor,
+    cursor::{self, MoveToColumn, MoveToRow},
     event::{DisableMouseCapture, EnableMouseCapture},
-    execute,
+    execute, queue,
+    style::{Color, ContentStyle, Print, SetStyle},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::io;
-use tui::{
-    backend::CrosstermBackend,
-    widgets::{Block, Borders, Clear},
-    Terminal,
-};
+use std::io::{self, Write};
 
 pub struct Ui {
-    terminal: Terminal<CrosstermBackend<io::Stdout>>,
+    terminal: io::Stdout,
     pub state: State,
 }
 
 impl Ui {
     pub fn new(state: State) -> Result<Self> {
-        let backend = CrosstermBackend::new(io::stdout());
-        let terminal = Terminal::new(backend).unwrap();
-
         enable_raw_mode()?;
-        let mut stdout = io::stdout();
+        let mut terminal = io::stdout();
         execute!(
-            stdout,
+            terminal,
             EnterAlternateScreen,
             EnableMouseCapture,
-            cursor::Hide
+            cursor::Hide,
         )?;
 
         Ok(Self { terminal, state })
     }
 
-    pub fn render(&mut self) -> Result<()> {
+    pub fn render_next_state(&mut self) -> Result<()> {
         let Self { terminal, state } = self;
 
-        let root_block = Block::default().title("Game Of Life").borders(Borders::ALL);
-        let ToTable {
-            table,
-            width_constraints,
-        } = state.into();
-        let table = table.widths(&width_constraints).block(root_block);
+        for (Coordinates { x, y }, state) in state.next_state() {
+            let style = ContentStyle {
+                background_color: Some(if state == CellState::Alive {
+                    Color::White
+                } else {
+                    Color::Black
+                }),
+                ..Default::default()
+            };
 
-        terminal.draw(|frame| {
-            let size = frame.size();
+            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+            {
+                queue!(
+                    terminal,
+                    MoveToColumn(x as _),
+                    MoveToRow(y as _),
+                    SetStyle(style),
+                    Print(" ")
+                )?;
+            }
+        }
 
-            frame.render_widget(Clear, size);
-            frame.render_widget(table.clone(), size);
-            frame.set_cursor(size.width, size.height);
-        })?;
+        queue!(terminal, cursor::MoveTo(0, 0))?;
+
+        terminal.flush()?;
 
         Ok(())
     }
@@ -65,11 +69,11 @@ impl Drop for Ui {
 
         disable_raw_mode().unwrap();
         execute!(
-            terminal.backend_mut(),
+            terminal,
             LeaveAlternateScreen,
-            DisableMouseCapture
+            DisableMouseCapture,
+            cursor::Show,
         )
         .unwrap();
-        terminal.show_cursor().unwrap();
     }
 }

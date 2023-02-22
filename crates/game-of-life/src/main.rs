@@ -1,15 +1,17 @@
 #![warn(clippy::pedantic)]
 
 use clap::Parser;
-use crossterm::event::{EventStream, KeyCode};
+use crossterm::{
+    event::{EventStream, KeyCode},
+    style::Color,
+};
 use futures::{FutureExt, StreamExt};
 use prelude::*;
 use state::State;
-use std::time::Duration;
+use std::{fmt, time::Duration};
 use tokio::select;
 use ui::Ui;
 
-mod cell;
 mod state;
 mod ui;
 
@@ -35,6 +37,12 @@ struct Args {
 
 mod prelude {
     pub type Result<T, E = Box<dyn std::error::Error>> = std::result::Result<T, E>;
+
+    #[derive(Clone, Copy)]
+    pub struct Coordinates {
+        pub x: i128,
+        pub y: i128,
+    }
 }
 
 #[tokio::main]
@@ -50,17 +58,19 @@ async fn main() -> Result<()> {
     } else {
         let (terminal_columns, terminal_rows) = crossterm::terminal::size()?;
         (
-            columns.unwrap_or(terminal_columns as usize - 2),
-            rows.unwrap_or(terminal_rows as usize - 2),
+            columns.unwrap_or(terminal_columns as _),
+            rows.unwrap_or(terminal_rows as _),
         )
     };
 
-    let mut ui = Ui::new(State::new(columns, rows))?;
-
     let mut event_stream = EventStream::new();
 
+    let state = State::new(columns, rows);
+
+    let mut ui = Ui::new(state)?;
+
     loop {
-        ui.render()?;
+        ui.render_next_state()?;
 
         let event_listener = event_stream.next().fuse();
         let sleeper = tokio::time::sleep(Duration::from_millis(delay));
@@ -75,9 +85,7 @@ async fn main() -> Result<()> {
                     break
                 };
             }
-            _ = sleeper => {
-                ui.state.tick();
-            }
+            _ = sleeper => {}
         }
     }
     Ok(())
