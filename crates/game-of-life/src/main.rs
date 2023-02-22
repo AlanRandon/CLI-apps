@@ -1,14 +1,11 @@
 #![warn(clippy::pedantic)]
 
 use clap::Parser;
-use crossterm::{
-    event::{EventStream, KeyCode},
-    style::Color,
-};
+use crossterm::event::{EventStream, KeyCode};
 use futures::{FutureExt, StreamExt};
 use prelude::*;
 use state::State;
-use std::{fmt, time::Duration};
+use std::time::Duration;
 use tokio::select;
 use ui::Ui;
 
