@@ -46,8 +46,8 @@ impl State {
     fn get_coordinates(&self, index: usize) -> Coordinates {
         let Self { width, .. } = self;
 
-        let width = *width as i128;
-        let index = index as i128;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        let [width, index] = [*width as i32, index as _];
 
         Coordinates {
             x: index % width,
@@ -60,12 +60,13 @@ impl State {
             cells,
             width,
             height,
+            ..
         } = self;
 
         let Coordinates { x, y } = coordinates;
 
-        let width = *width as i128;
-        let height = *height as i128;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        let (width, height) = (*width as _, *height as _);
 
         [
             (-1, -1),

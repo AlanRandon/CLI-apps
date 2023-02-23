@@ -9,15 +9,63 @@ use crossterm::{
     style::{Color, ContentStyle, Print, SetStyle},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    marker::PhantomData,
+};
 
-pub struct Ui {
-    terminal: io::Stdout,
-    pub state: State,
+pub trait RendererBackend<RenderError>: Sized
+where
+    RenderError: std::error::Error,
+{
+    fn render_next_state(&mut self, state: &mut State) -> Result<(), RenderError>;
 }
 
-impl Ui {
-    pub fn new(state: State) -> Result<Self> {
+pub struct Renderer<B, E>
+where
+    B: RendererBackend<E>,
+    E: std::error::Error,
+{
+    state: State,
+    backend: B,
+    _phantom: PhantomData<E>,
+}
+
+impl<B, E> Renderer<B, E>
+where
+    B: RendererBackend<E>,
+    E: std::error::Error,
+{
+    fn new(state: State, backend: B) -> Self {
+        Self {
+            state,
+            backend,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn render_next_state(&mut self) -> Result<(), E> {
+        let Self { state, backend, .. } = self;
+        backend.render_next_state(state)
+    }
+}
+
+pub struct CrosstermBackend {
+    terminal: io::Stdout,
+}
+
+#[derive(clap::Args)]
+pub struct TerminalSizeArgs {
+    /// The height of the board (in rows)
+    #[clap(short = 'r', long)]
+    rows: Option<usize>,
+    /// The width of the board (in columns)
+    #[clap(short = 'c', long)]
+    columns: Option<usize>,
+}
+
+impl CrosstermBackend {
+    pub fn new() -> crossterm::Result<Self> {
         enable_raw_mode()?;
         let mut terminal = io::stdout();
         execute!(
@@ -27,11 +75,32 @@ impl Ui {
             cursor::Hide,
         )?;
 
-        Ok(Self { terminal, state })
+        Ok(Self { terminal })
     }
 
-    pub fn render_next_state(&mut self) -> Result<()> {
-        let Self { terminal, state } = self;
+    pub fn new_renderer(
+        TerminalSizeArgs { rows, columns }: TerminalSizeArgs,
+    ) -> crossterm::Result<Renderer<Self, crossterm::ErrorKind>> {
+        let (columns, rows) = if let (Some(columns), Some(rows)) = (columns, rows) {
+            (columns, rows)
+        } else {
+            let (terminal_columns, terminal_rows) = crossterm::terminal::size()?;
+            (
+                columns.unwrap_or(terminal_columns as _),
+                rows.unwrap_or(terminal_rows as _),
+            )
+        };
+
+        let state = State::new(columns, rows);
+        let backend = Self::new()?;
+
+        Ok(Renderer::new(state, backend))
+    }
+}
+
+impl RendererBackend<crossterm::ErrorKind> for CrosstermBackend {
+    fn render_next_state(&mut self, state: &mut State) -> crossterm::Result<()> {
+        let Self { terminal } = self;
 
         for (Coordinates { x, y }, state) in state.next_state() {
             let style = ContentStyle {
@@ -63,7 +132,7 @@ impl Ui {
     }
 }
 
-impl Drop for Ui {
+impl Drop for CrosstermBackend {
     fn drop(&mut self) {
         let Self { terminal, .. } = self;
 
