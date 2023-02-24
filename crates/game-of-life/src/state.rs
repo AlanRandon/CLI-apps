@@ -98,7 +98,7 @@ impl State {
     }
 
     /// Tick will return an iterator containing the coordinates and state of each cell
-    pub fn next_state(&mut self) -> impl Iterator<Item = (Coordinates, CellState)> {
+    pub fn next_state(&mut self) -> impl Iterator<Item = CellRenderInfo> {
         let (internal_state, state): (Vec<_>, Vec<_>) = self
             .cells
             .par_iter()
@@ -115,11 +115,17 @@ impl State {
                     _ => CellState::Dead,
                 };
 
-                (coordinates, (state, next_state))
+                (
+                    next_state,
+                    CellRenderInfo {
+                        state: next_state,
+                        coordinates,
+                        needs_rerender: state != next_state,
+                    },
+                )
             })
             .collect::<Vec<_>>()
             .into_iter()
-            .map(|(coordinates, (state, next_state))| (next_state, (coordinates, state)))
             .unzip();
 
         self.cells = internal_state;

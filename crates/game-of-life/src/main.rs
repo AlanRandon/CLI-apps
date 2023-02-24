@@ -5,7 +5,7 @@ use crossterm::event::{EventStream, KeyCode};
 use futures::{FutureExt, StreamExt};
 use std::time::Duration;
 use tokio::select;
-use ui::{CrosstermBackend, Renderer, TerminalSizeArgs};
+use ui::{terminal, RendererBackend};
 
 mod state;
 mod ui;
@@ -23,14 +23,23 @@ struct Args {
     #[clap(long, short, default_value_t = 500)]
     delay: u64,
     #[command(flatten)]
-    terminal_size: TerminalSizeArgs,
+    backend_config: terminal::Config,
 }
 
 mod prelude {
-    #[derive(Clone, Copy)]
+    use crate::state::CellState;
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
     pub struct Coordinates<T = i32> {
         pub y: T,
         pub x: T,
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub struct CellRenderInfo {
+        pub state: CellState,
+        pub coordinates: Coordinates,
+        pub needs_rerender: bool,
     }
 }
 
@@ -38,12 +47,12 @@ mod prelude {
 async fn main() -> crossterm::Result<()> {
     let Args {
         delay,
-        terminal_size,
+        backend_config,
     } = Args::parse();
 
     let mut event_stream = EventStream::new();
 
-    let mut ui = CrosstermBackend::new_renderer(terminal_size)?;
+    let mut ui = terminal::Backend::renderer(backend_config)?;
 
     loop {
         ui.render_next_state()?;
