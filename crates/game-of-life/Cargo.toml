@@ -12,3 +12,4 @@ rand = { workspace = true, features = ["small_rng"] }
 tokio = { workspace = true }
 futures = { workspace = true }
 clap = { workspace = true }
+nom = { workspace = true }

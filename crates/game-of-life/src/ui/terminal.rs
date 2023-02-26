@@ -13,58 +13,30 @@ use crossterm::{
 };
 use std::io::{stdout, Stdout, Write};
 
+mod config;
+
 pub struct Backend {
     terminal: Stdout,
+    colors: CellColors,
+}
+
+struct CellColors {
     alive_color: Color,
     dead_color: Color,
 }
 
-mod config {
-    use clap::Args;
-    use crossterm::style::Color;
-    use std::{fmt, str::FromStr};
+impl CellColors {
+    fn get_color(&self, state: CellState) -> Color {
+        let Self {
+            alive_color,
+            dead_color,
+        } = self;
 
-    #[derive(Args)]
-    pub struct Config {
-        /// The height of the board (in rows)
-        #[clap(short = 'r', long)]
-        pub rows: Option<usize>,
-        /// The width of the board (in columns)
-        #[clap(short = 'c', long)]
-        pub columns: Option<usize>,
-        /// The color of an alive cell as an ANSI color
-        #[clap(long, value_parser = color_parser, default_value = "255")]
-        pub alive_color: ColorWrapper,
-        /// The color of an alive cell as an ANSI color
-        #[clap(long, value_parser = color_parser, default_value = "0")]
-        pub dead_color: ColorWrapper,
-    }
-
-    #[derive(Clone)]
-    pub struct ColorWrapper {
-        color: Color,
-    }
-
-    impl fmt::Display for ColorWrapper {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{:?}", self.color)
+        if state == CellState::Alive {
+            *alive_color
+        } else {
+            *dead_color
         }
-    }
-
-    impl ColorWrapper {
-        fn new(color: Color) -> Self {
-            Self { color }
-        }
-
-        pub fn into_color(self) -> Color {
-            self.color
-        }
-    }
-
-    // TODO: add a better parser to handle hex codes + named colors
-    fn color_parser(input: &str) -> Result<ColorWrapper, <u8 as FromStr>::Err> {
-        let input = input.parse()?;
-        Ok(ColorWrapper::new(Color::AnsiValue(input)))
     }
 }
 
@@ -81,8 +53,10 @@ impl Backend {
 
         Ok(Self {
             terminal,
-            alive_color,
-            dead_color,
+            colors: CellColors {
+                alive_color,
+                dead_color,
+            },
         })
     }
 }
@@ -94,11 +68,7 @@ impl RendererBackend<crossterm::ErrorKind> for Backend {
     where
         I: Iterator<Item = CellRenderInfo>,
     {
-        let Self {
-            terminal,
-            alive_color,
-            dead_color,
-        } = self;
+        let Self { terminal, colors } = self;
 
         let mut previous_y = -10_i32;
 
@@ -109,12 +79,7 @@ impl RendererBackend<crossterm::ErrorKind> for Backend {
         } in state
         {
             if needs_rerender {
-                // TODO: put this if in a `get_color` method - separate color state
-                let color = if state == CellState::Alive {
-                    *alive_color
-                } else {
-                    *dead_color
-                };
+                let color = colors.get_color(state);
 
                 if previous_y != y {
                     queue!(

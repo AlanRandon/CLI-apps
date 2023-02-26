@@ -11,6 +11,8 @@ crossterm = "0.26"
 lazy_static = "1.4"
 reqwest = "0.11"
 itertools = "0.10"
+thiserror = "1.0"
+nom = "7.1"
 # Image processing
 palette = "0.6"
 image = "0.24"
