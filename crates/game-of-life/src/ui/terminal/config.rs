@@ -68,12 +68,22 @@ fn hex_color(input: &str) -> IResult<&str, Color> {
             count(recognize(hex_char), 3),
         )),
         |input: Vec<&str>| {
+            let is_short = input[0].len() == 1;
             let mut input = input.into_iter();
 
+            let [r, g, b] = [
+                input.next().unwrap(),
+                input.next().unwrap(),
+                input.next().unwrap(),
+            ]
+            .map(|digit| {
+                u8::from_str_radix(digit, 16).map(|digit| if is_short { digit * 16 } else { digit })
+            });
+
             Ok::<_, <u8 as FromStr>::Err>(Color::Rgb {
-                r: u8::from_str_radix(input.next().unwrap(), 16)?,
-                g: u8::from_str_radix(input.next().unwrap(), 16)?,
-                b: u8::from_str_radix(input.next().unwrap(), 16)?,
+                r: r?,
+                g: g?,
+                b: b?,
             })
         },
     )(input)
