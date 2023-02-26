@@ -18,6 +18,7 @@ mod config;
 pub struct Backend {
     terminal: Stdout,
     colors: CellColors,
+    has_rendered: bool,
 }
 
 struct CellColors {
@@ -53,6 +54,7 @@ impl Backend {
 
         Ok(Self {
             terminal,
+            has_rendered: false,
             colors: CellColors {
                 alive_color,
                 dead_color,
@@ -68,7 +70,11 @@ impl RendererBackend<crossterm::ErrorKind> for Backend {
     where
         I: Iterator<Item = CellRenderInfo>,
     {
-        let Self { terminal, colors } = self;
+        let Self {
+            terminal,
+            colors,
+            has_rendered,
+        } = self;
 
         let mut previous_y = -10_i32;
 
@@ -78,7 +84,7 @@ impl RendererBackend<crossterm::ErrorKind> for Backend {
             needs_rerender,
         } in state
         {
-            if needs_rerender {
+            if needs_rerender || !*has_rendered {
                 let color = colors.get_color(state);
 
                 if previous_y != y {
@@ -110,6 +116,8 @@ impl RendererBackend<crossterm::ErrorKind> for Backend {
                 }
             }
         }
+
+        *has_rendered = true;
 
         terminal.flush()?;
 
