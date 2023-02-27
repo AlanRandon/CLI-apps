@@ -13,3 +13,4 @@ tokio = { workspace = true }
 futures = { workspace = true }
 clap = { workspace = true }
 nom = { workspace = true }
+nom-supreme = "0.8"

@@ -2,12 +2,12 @@ use clap::Args;
 use crossterm::style::Color;
 use nom::{
     branch::alt,
-    bytes::complete::tag,
     character::complete::{digit1, satisfy},
-    combinator::{complete, map_res, recognize, value},
     multi::count,
-    sequence::preceded,
-    IResult,
+    IResult, Parser,
+};
+use nom_supreme::{
+    error::ErrorTree, final_parser::final_parser, parser_ext::ParserExt, tag::complete::tag,
 };
 use std::str::FromStr;
 
@@ -42,70 +42,109 @@ impl ColorWrapper {
     }
 }
 
-fn parse_color(input: &str) -> Result<ColorWrapper, nom::Err<nom::error::Error<String>>> {
-    match complete(alt((ansi_color, named_color, hex_color)))(input) {
-        Ok((_, result)) => Ok(ColorWrapper::new(result)),
-        Err(err) => Err(err.to_owned()),
+pub trait ToStringError {
+    fn to_string_error(self) -> ErrorTree<String>;
+}
+
+impl<I> ToStringError for ErrorTree<I>
+where
+    I: ToString,
+{
+    fn to_string_error(self) -> ErrorTree<String> {
+        self.map_locations(
+            #[allow(clippy::redundant_clone)]
+            {
+                |i| i.to_string()
+            },
+        )
     }
 }
 
-fn ansi_color(input: &str) -> IResult<&str, Color> {
-    map_res(preceded(tag("ANSI-"), digit1), |number: &str| {
-        Ok::<_, <u8 as FromStr>::Err>(Color::AnsiValue(number.parse()?))
-    })(input)
+fn parse_color(input: &str) -> Result<ColorWrapper, ErrorTree<String>> {
+    final_parser(
+        alt((
+            named_color.context("named color"),
+            ansi_color.context("ANSI color"),
+            hex_color.context("hex color"),
+        ))
+        .map(ColorWrapper::new)
+        .all_consuming(),
+    )(input)
+    .map_err(ErrorTree::<&str>::to_string_error)
 }
 
-fn hex_char(input: &str) -> IResult<&str, char> {
+fn ansi_color(input: &str) -> IResult<&str, Color, ErrorTree<&str>> {
+    tag("ANSI-")
+        .precedes(digit1)
+        .map_res(|number: &str| number.parse().map(Color::AnsiValue))
+        .parse(input)
+}
+
+fn hex_char(input: &str) -> IResult<&str, char, ErrorTree<&str>> {
     satisfy(|ch| ch.is_ascii_hexdigit())(input)
 }
 
-fn hex_color(input: &str) -> IResult<&str, Color> {
-    let (input, _) = tag("#")(input)?;
-
-    map_res(
-        alt((
-            count(recognize(count(hex_char, 2)), 3),
-            count(recognize(hex_char), 3),
-        )),
-        |input: Vec<&str>| {
-            let is_short = input[0].len() == 1;
-            let mut input = input.into_iter();
-
-            let [r, g, b] = [
-                input.next().unwrap(),
-                input.next().unwrap(),
-                input.next().unwrap(),
-            ]
-            .map(|digit| {
-                u8::from_str_radix(digit, 16).map(|digit| if is_short { digit * 16 } else { digit })
-            });
-
-            Ok::<_, <u8 as FromStr>::Err>(Color::Rgb {
-                r: r?,
-                g: g?,
-                b: b?,
-            })
-        },
-    )(input)
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HexCodeKind {
+    Long,
+    Short,
 }
 
-fn named_color(input: &str) -> IResult<&str, Color> {
+fn hex_color(input: &str) -> IResult<&str, Color, ErrorTree<&str>> {
+    let (input, _) = tag("#")(input)?;
+
     alt((
-        value(Color::Black, tag("black")),
-        value(Color::Blue, tag("blue")),
-        value(Color::Cyan, tag("cyan")),
-        value(Color::DarkBlue, tag("dark-blue")),
-        value(Color::DarkCyan, tag("dark-cyan")),
-        value(Color::DarkGreen, tag("dark-green")),
-        value(Color::DarkGrey, tag("dark-grey")),
-        value(Color::DarkMagenta, tag("dark-magenta")),
-        value(Color::DarkRed, tag("dark-red")),
-        value(Color::DarkYellow, tag("dark-yellow")),
-        value(Color::Green, tag("green")),
-        value(Color::Grey, tag("grey")),
-        value(Color::Magenta, tag("magenta")),
-        value(Color::Red, tag("red")),
-        value(Color::White, tag("white")),
-        value(Color::Yellow, tag("yellow")),
-    ))(input)
+        count(count(hex_char, 2).recognize(), 3).map(|input| (input, HexCodeKind::Long)),
+        count(hex_char.recognize(), 3).map(|input| (input, HexCodeKind::Short)),
+    ))
+    .map_res(|(input, kind)| {
+        let mut input = input.into_iter();
+
+        let [r, g, b] = [
+            input.next().unwrap(),
+            input.next().unwrap(),
+            input.next().unwrap(),
+        ]
+        .map(|digit| {
+            u8::from_str_radix(digit, 16).map(|digit| {
+                if kind == HexCodeKind::Short {
+                    digit * 16
+                } else {
+                    digit
+                }
+            })
+        });
+
+        Ok::<_, <u8 as FromStr>::Err>(Color::Rgb {
+            r: r?,
+            g: g?,
+            b: b?,
+        })
+    })
+    .parse(input)
+}
+
+fn named_color(input: &str) -> IResult<&str, Color, ErrorTree<&str>> {
+    #[allow(clippy::enum_glob_use)]
+    use Color::*;
+
+    alt((
+        tag("black").value(Black),
+        tag("blue").value(Blue),
+        tag("cyan").value(Cyan),
+        tag("dark-blue").value(DarkBlue),
+        tag("dark-cyan").value(DarkCyan),
+        tag("dark-green").value(DarkGreen),
+        tag("dark-grey").value(DarkGrey),
+        tag("dark-magenta").value(DarkMagenta),
+        tag("dark-red").value(DarkRed),
+        tag("dark-yellow").value(DarkYellow),
+        tag("green").value(Green),
+        tag("grey").value(Grey),
+        tag("magenta").value(Magenta),
+        tag("red").value(Red),
+        tag("white").value(White),
+        tag("yellow").value(Yellow),
+    ))
+    .parse(input)
 }
