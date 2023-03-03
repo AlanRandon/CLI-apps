@@ -27,7 +27,7 @@ pub struct Config {
     pub dead_color: ColorWrapper,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ColorWrapper {
     color: Color,
 }
@@ -73,11 +73,27 @@ fn parse_color(input: &str) -> Result<ColorWrapper, ErrorTree<String>> {
     .map_err(ErrorTree::<&str>::to_string_error)
 }
 
+#[test]
+fn color_parses() {
+    parse_color("a").unwrap_err();
+    assert_eq!(
+        parse_color("black").unwrap(),
+        ColorWrapper::new(Color::Black)
+    );
+}
+
 fn ansi_color(input: &str) -> IResult<&str, Color, ErrorTree<&str>> {
     tag("ANSI-")
         .precedes(digit1)
         .map_res(|number: &str| number.parse().map(Color::AnsiValue))
         .parse(input)
+}
+
+#[test]
+fn ansi_color_parses() {
+    let (remaining, result) = ansi_color("ANSI-10").unwrap();
+    assert_eq!(remaining, "");
+    assert_eq!(result, Color::AnsiValue(10));
 }
 
 fn hex_char(input: &str) -> IResult<&str, char, ErrorTree<&str>> {
@@ -108,7 +124,7 @@ fn hex_color(input: &str) -> IResult<&str, Color, ErrorTree<&str>> {
         .map(|digit| {
             u8::from_str_radix(digit, 16).map(|digit| {
                 if kind == HexCodeKind::Short {
-                    digit * 16
+                    digit * 16 + digit
                 } else {
                     digit
                 }
@@ -122,6 +138,31 @@ fn hex_color(input: &str) -> IResult<&str, Color, ErrorTree<&str>> {
         })
     })
     .parse(input)
+}
+
+#[test]
+fn hex_color_parses() {
+    let (remaining, result) = hex_color("#fff").unwrap();
+    assert_eq!(remaining, "");
+    assert_eq!(
+        result,
+        Color::Rgb {
+            r: 0xff,
+            g: 0xff,
+            b: 0xff
+        }
+    );
+
+    let (remaining, result) = hex_color("#0a6789").unwrap();
+    assert_eq!(remaining, "");
+    assert_eq!(
+        result,
+        Color::Rgb {
+            r: 0x0a,
+            g: 0x67,
+            b: 0x89
+        }
+    );
 }
 
 fn named_color(input: &str) -> IResult<&str, Color, ErrorTree<&str>> {
@@ -147,4 +188,11 @@ fn named_color(input: &str) -> IResult<&str, Color, ErrorTree<&str>> {
         tag("yellow").value(Yellow),
     ))
     .parse(input)
+}
+
+#[test]
+fn named_color_parses() {
+    let (remaining, result) = named_color("red").unwrap();
+    assert_eq!(remaining, "");
+    assert_eq!(result, Color::Red);
 }

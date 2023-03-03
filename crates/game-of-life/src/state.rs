@@ -2,7 +2,10 @@ use crate::prelude::*;
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use rayon::prelude::*;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg(test)]
+mod tests;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[allow(clippy::module_name_repetitions)]
 pub enum CellState {
     Alive = 1,
