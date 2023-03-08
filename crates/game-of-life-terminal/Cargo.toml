@@ -1,14 +1,11 @@
 [package]
-name = "game-of-life"
+name = "game-of-life-terminal"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+game-of-life-core = { path = "../game-of-life-core" }
 crossterm = { workspace = true, features = ["event-stream"] }
-rayon = { workspace = true }
-rand = { workspace = true, features = ["small_rng"] }
 tokio = { workspace = true }
 futures = { workspace = true }
 clap = { workspace = true }

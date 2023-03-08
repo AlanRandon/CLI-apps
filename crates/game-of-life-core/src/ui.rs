@@ -1,7 +1,5 @@
-use crate::{prelude::*, state::State};
+use crate::{state::State, CellRenderInfo};
 use std::marker::PhantomData;
-
-pub mod terminal;
 
 pub trait RendererBackend<E>: Sized
 where
@@ -9,10 +7,18 @@ where
 {
     type Config;
 
+    /// Should render the state provided by the iterator.
+    ///
+    /// # Errors
+    /// When the backed experiences an error, such as failing to render to stdout, it should error.
     fn render<I>(&mut self, state: I) -> Result<(), E>
     where
         I: Iterator<Item = CellRenderInfo>;
 
+    /// Should create a renderer given some config.
+    ///
+    /// # Errors
+    /// When it fails to create a renderer, it should error.
     fn renderer(config: Self::Config) -> Result<Renderer<Self, E>, E>;
 }
 

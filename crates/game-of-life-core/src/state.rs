@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{CellRenderInfo, Coordinates};
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use rayon::prelude::*;
 
