@@ -1,8 +1,3 @@
-use super::{Renderer, RendererBackend};
-use crate::{
-    prelude::*,
-    state::{CellState, State},
-};
 pub use config::Config;
 use crossterm::{
     cursor::{self, MoveToColumn, MoveToRow},
@@ -11,6 +6,7 @@ use crossterm::{
     style::{Color, Print, SetBackgroundColor},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use game_of_life_core::prelude::*;
 use std::io::{stdout, Stdout, Write};
 
 mod config;

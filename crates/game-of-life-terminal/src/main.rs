@@ -3,12 +3,11 @@
 use clap::Parser;
 use crossterm::event::{EventStream, KeyCode};
 use futures::{FutureExt, StreamExt};
+use game_of_life_core::prelude::*;
 use std::time::Duration;
 use tokio::select;
-use ui::{terminal, RendererBackend};
 
-mod state;
-mod ui;
+mod terminal;
 
 /// An implementation of the game of life in rust.
 ///

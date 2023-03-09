@@ -18,4 +18,10 @@ pub struct CellRenderInfo {
     pub needs_rerender: bool,
 }
 
-mod prelude {}
+pub mod prelude {
+    pub use super::{
+        state::{CellState, State},
+        ui::{Renderer, RendererBackend},
+        CellRenderInfo, Coordinates,
+    };
+}
