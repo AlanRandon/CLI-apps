@@ -62,10 +62,7 @@ impl Backend {
 impl RendererBackend<crossterm::ErrorKind> for Backend {
     type Config = Config;
 
-    fn render<I>(&mut self, state: I) -> crossterm::Result<()>
-    where
-        I: Iterator<Item = CellRenderInfo>,
-    {
+    fn render(&mut self, state: state::Frame) -> crossterm::Result<()> {
         let Self {
             terminal,
             colors,

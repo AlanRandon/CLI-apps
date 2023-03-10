@@ -20,7 +20,7 @@ pub struct CellRenderInfo {
 
 pub mod prelude {
     pub use super::{
-        state::{CellState, State},
+        state::{self, CellState, State},
         ui::{Renderer, RendererBackend},
         CellRenderInfo, Coordinates,
     };

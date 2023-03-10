@@ -21,7 +21,7 @@ fn cells_die_underpopulation() {
         height: 3,
     };
 
-    state.next_state().for_each(drop);
+    state.next();
 
     assert_eq!(
         state.cells,
@@ -62,7 +62,7 @@ fn cells_die_overpopulation() {
         height: 3,
     };
 
-    state.next_state().for_each(drop);
+    state.next();
 
     assert_eq!(
         state.cells,
@@ -105,7 +105,7 @@ fn cells_stay_alive() {
         height: 3,
     };
 
-    state.next_state().for_each(drop);
+    state.next();
 
     assert_eq!(state.cells, stable_state);
 }

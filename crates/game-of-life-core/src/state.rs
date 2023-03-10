@@ -28,6 +28,10 @@ pub struct State {
     height: usize,
 }
 
+pub struct Frame {
+    buffer: Vec<CellRenderInfo>,
+}
+
 impl State {
     pub fn new(width: usize, height: usize) -> Self {
         let length = width * height;
@@ -100,8 +104,7 @@ impl State {
             .fold(0, |acc, &state| acc + state as usize)
     }
 
-    /// Tick will return an iterator containing the coordinates and state of each cell
-    pub fn next_state(&mut self) -> impl Iterator<Item = CellRenderInfo> {
+    fn next_state_buffer(&mut self) -> Vec<CellRenderInfo> {
         let (internal_state, state): (Vec<_>, Vec<_>) = self
             .cells
             .par_iter()
@@ -133,6 +136,37 @@ impl State {
 
         self.cells = internal_state;
 
-        state.into_iter()
+        state
+    }
+}
+
+impl std::iter::Iterator for State {
+    type Item = Frame;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(Frame {
+            buffer: self.next_state_buffer(),
+        })
+    }
+}
+
+impl IntoIterator for Frame {
+    type IntoIter = std::vec::IntoIter<CellRenderInfo>;
+    type Item = CellRenderInfo;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.buffer.into_iter()
+    }
+}
+
+impl Frame {
+    pub fn to_buffer<F, R>(self, state_mapping: F) -> Vec<R>
+    where
+        F: Fn(CellState) -> R,
+    {
+        self.buffer
+            .into_iter()
+            .map(|CellRenderInfo { state, .. }| state_mapping(state))
+            .collect()
     }
 }

@@ -1,15 +1,16 @@
 #![warn(clippy::pedantic)]
 
+use clap::Parser;
 use game_of_life_core::prelude::*;
 use gif::{Encoder, Frame};
 use std::{fs::File, path::PathBuf};
 use thiserror::Error;
 
 #[cfg(debug_assertions)]
-pub const OUTPUT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/output.gif");
+pub const DEFAULT_OUTPUT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/output.gif");
 
 #[cfg(not(debug_assertions))]
-pub const OUTPUT_PATH: &str = "output.gif";
+pub const DEFAULT_OUTPUT_PATH: &str = "output.gif";
 
 struct GifBackend {
     width: u16,
@@ -18,13 +19,40 @@ struct GifBackend {
     encoder: Encoder<File>,
 }
 
+#[derive(Parser, Debug)]
 struct GifBackendConfig {
+    #[clap(short, long, default_value = DEFAULT_OUTPUT_PATH)]
     path: PathBuf,
+    #[clap(long, default_value_t = 256)]
     width: u16,
+    #[clap(long, default_value_t = 256)]
     height: u16,
+    #[clap(short = 'd', long, default_value_t = 10)]
     frame_delay: u16,
+    #[clap(short = 'c', long, default_value_t = 512)]
+    frame_count: usize,
+    #[clap(long, value_parser = parse_hex_color, default_value = "ffffff")]
     alive_color: [u8; 3],
+    #[clap(long, value_parser = parse_hex_color, default_value = "000000")]
     dead_color: [u8; 3],
+}
+
+#[derive(Error, Debug)]
+enum ParseHexColorError {
+    #[error("insufficient length of input")]
+    Length,
+    #[error("failed encoding")]
+    FromStrRadix(#[from] std::num::ParseIntError),
+}
+
+fn parse_hex_color(input: &str) -> Result<[u8; 3], ParseHexColorError> {
+    if input.len() != 6 {
+        return Err(ParseHexColorError::Length);
+    };
+
+    let bytes = u32::from_str_radix(input, 16)?.to_le_bytes();
+
+    Ok([bytes[2], bytes[1], bytes[0]])
 }
 
 #[derive(Error, Debug)]
@@ -44,10 +72,15 @@ impl GifBackend {
             frame_delay,
             alive_color,
             dead_color,
+            ..
         }: GifBackendConfig,
     ) -> Result<Self, GifBackendError> {
+        log::info!("Opening gif file");
         let file = File::create(path).unwrap();
-        let encoder = Encoder::new(file, width, height, &[dead_color, alive_color].concat())?;
+        log::info!("Creating gif encoder");
+        let mut encoder = Encoder::new(file, width, height, &[dead_color, alive_color].concat())?;
+        encoder.set_repeat(gif::Repeat::Infinite)?;
+
         Ok(Self {
             width,
             height,
@@ -60,32 +93,18 @@ impl GifBackend {
 impl RendererBackend<GifBackendError> for GifBackend {
     type Config = GifBackendConfig;
 
-    fn render<I>(&mut self, state: I) -> Result<(), GifBackendError>
-    where
-        I: Iterator<Item = CellRenderInfo>,
-    {
-        let mut pixels = vec![0; (self.width * self.height).into()];
-
-        let height = usize::from(self.height);
-        for CellRenderInfo {
-            state,
-            coordinates: Coordinates { y, x },
-            ..
-        } in state
-        {
-            #[allow(clippy::cast_sign_loss)]
-            let index = y as usize * height + x as usize;
-
-            pixels[index] = u8::from(state == CellState::Alive);
-        }
-
-        let mut frame = Frame::from_indexed_pixels(self.width, self.height, &pixels, None);
+    fn render(&mut self, state: state::Frame) -> Result<(), GifBackendError> {
+        let mut frame = Frame::from_indexed_pixels(
+            self.width,
+            self.height,
+            &state.to_buffer(|state| u8::from(state == CellState::Alive)),
+            None,
+        );
 
         frame.delay = self.frame_delay;
+        frame.make_lzw_pre_encoded();
 
-        self.encoder.set_repeat(gif::Repeat::Infinite)?;
-
-        self.encoder.write_frame(&frame)?;
+        self.encoder.write_lzw_pre_encoded_frame(&frame)?;
 
         Ok(())
     }
@@ -99,19 +118,24 @@ impl RendererBackend<GifBackendError> for GifBackend {
 }
 
 fn main() -> Result<(), GifBackendError> {
-    // TODO: accept config as CLI args
-    let mut renderer = GifBackend::renderer(GifBackendConfig {
-        path: OUTPUT_PATH.into(),
-        width: 100,
-        height: 100,
-        frame_delay: 10,
-        alive_color: [0xff, 0xff, 0xff],
-        dead_color: [0, 0, 0],
-    })?;
+    pretty_env_logger::formatted_builder()
+        .filter_level(log::LevelFilter::Info)
+        .init();
 
-    for _ in 0..300 {
-        renderer.render_next_state()?;
-    }
+    log::info!("Parsing config from CLI args");
+    let config = GifBackendConfig::parse();
+
+    let frame_count = config.frame_count;
+
+    let renderer = GifBackend::renderer(config)?;
+
+    log::info!("Rendering frames");
+
+    renderer
+        .take(frame_count)
+        .collect::<Result<(), GifBackendError>>()?;
+
+    log::info!("Complete");
 
     Ok(())
 }
