@@ -1,0 +1,65 @@
+[package]
+name = "full-stack-web"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+axum = { version = "0.6", optional = true }
+console_error_panic_hook = "0.1"
+console_log = "1.0"
+cfg-if = "1"
+leptos = { version = "0.2", default-features = false, features = ["serde", "stable"] }
+leptos_axum = { version = "0.2", optional = true }
+leptos_meta = { version = "0.2", default-features = false, features = ["stable"] }
+leptos_router = { version = "0.2", default-features = false, features = ["stable"] }
+log = "0.4"
+simple_logger = "4"
+tokio = { version = "1.26", optional = true }
+tower = { version = "0.4", optional = true }
+tower-http = { version = "0.4", features = ["fs"], optional = true }
+wasm-bindgen = "0.2"
+thiserror = "1.0"
+tracing = { version = "0.1", optional = true }
+http = "0.2"
+
+[features]
+hydrate = ["leptos/hydrate", "leptos_meta/hydrate", "leptos_router/hydrate"]
+ssr = [
+    "dep:axum", 
+    "dep:tokio", 
+    "dep:tower", 
+    "dep:tower-http", 
+    "dep:leptos_axum", 
+    "leptos/ssr", 
+    "leptos_meta/ssr", 
+    "leptos_router/ssr", 
+    "dep:tracing"
+]
+
+[package.metadata.cargo-all-features]
+denylist = [
+    "axum",
+    "tokio",
+    "tower",
+    "tower-http",
+    "leptos_axum",
+]
+skip_feature_sets = [["ssr", "hydrate"]]
+
+[package.metadata.leptos]
+output-name = "start-axum"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+style-file = "style/main.scss"
+assets-dir = "public"
+site-addr = "127.0.0.1:3000"
+reload-port = 3001
+watch = false
+env = "DEV"
+bin-features = ["ssr"]
+bin-default-features = false
+lib-features = ["hydrate"]
+lib-default-features = false
