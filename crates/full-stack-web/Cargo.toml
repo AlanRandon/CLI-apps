@@ -26,7 +26,9 @@ tracing = { version = "0.1", optional = true }
 http = "0.2"
 
 [features]
+# client code
 hydrate = ["leptos/hydrate", "leptos_meta/hydrate", "leptos_router/hydrate"]
+# server code
 ssr = [
     "dep:axum", 
     "dep:tokio", 
@@ -38,6 +40,7 @@ ssr = [
     "leptos_router/ssr", 
     "dep:tracing"
 ]
+default = ["ssr", "hydrate"]
 
 [package.metadata.cargo-all-features]
 denylist = [
@@ -53,7 +56,6 @@ skip_feature_sets = [["ssr", "hydrate"]]
 output-name = "start-axum"
 site-root = "target/site"
 site-pkg-dir = "pkg"
-style-file = "style/main.scss"
 assets-dir = "public"
 site-addr = "127.0.0.1:3000"
 reload-port = 3001
