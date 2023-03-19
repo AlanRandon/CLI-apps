@@ -20,8 +20,10 @@ async fn main() {
     use axum::{
         error_handling::HandleErrorLayer,
         handler::HandlerService,
-        routing::{get_service, MethodRouter},
+        routing::{get, get_service, MethodRouter},
     };
+    use leptos::LeptosOptions;
+    use tower::{service_fn, Service};
 
     simple_logger::init_with_level(log::Level::Info).expect("couldn't initialize logging");
 
@@ -41,13 +43,11 @@ async fn main() {
                 leptos_options.clone(),
                 move |cx| view! {cx, <ErrorTemplate error=AppError::NotFound/>},
             );
-            get_service(ServeDir::new(root).then(|response| async move {
-                match response {
-                    Ok(response) => reponse,
-                    Err(err) => handle_error().
-                }
-                
-            }))
+
+            let dir_server = ServeDir::new(root).fallback(service_fn(move |request| async move {
+                Ok(handle_error(request).await)
+            }));
+            get_service(dir_server)
         });
 
     log::info!("listening on http://{}", &addr);
