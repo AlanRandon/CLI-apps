@@ -1,30 +1,56 @@
 use full_stack_web::app::{App, AppProps};
+use http::{HeaderValue, StatusCode};
+use std::{future::Future, path::Path, pin::Pin};
 
 #[cfg(feature = "ssr")]
 use {
     axum::{
-        body::Body, extract::Extension, http::Request, response::IntoResponse, routing::post,
-        Router,
+        body::{Body, HttpBody},
+        error_handling::HandleErrorLayer,
+        extract::Extension,
+        http::Request,
+        response::{IntoResponse, Response},
+        routing::post,
+        routing::{get, get_service, MethodRouter},
+        BoxError, RequestExt, Router,
     },
     full_stack_web::error_template::{AppError, ErrorTemplate, ErrorTemplateProps},
-    leptos::{get_configuration, view},
+    leptos::{get_configuration, view, LeptosOptions},
     leptos_axum::{generate_route_list, LeptosRoutes},
     std::sync::Arc,
-    tower::{ServiceBuilder, ServiceExt},
+    tower::{service_fn, util::ServiceFn, Service, ServiceBuilder, ServiceExt},
     tower_http::services::ServeDir,
 };
 
 #[cfg(feature = "ssr")]
+fn serve_dir(
+    root: &str,
+    fallback: impl Fn(Request<Body>) -> Pin<Box<dyn Future<Output = Response>>>,
+) -> ServiceFn<impl Fn(Request<Body>) -> Pin<Box<dyn Future<Output = Response>>>> {
+    service_fn(move |request: Request<Body>| {
+        Box::<dyn Future<Output = Response>>::pin(async move {
+            let uri = request.uri().clone();
+            let Ok(body) = tokio::fs::read_to_string(&format!("{root}{uri}")).await else {
+                return fallback(request).await;
+            };
+            Response::builder()
+                .header(
+                    "Content-Type",
+                    HeaderValue::from_str(
+                        mime_guess::from_path(Path::new(uri.path()))
+                            .first_raw()
+                            .unwrap_or("application/octet-stream"),
+                    )
+                    .unwrap(),
+                )
+                .body(body)
+        })
+    })
+}
+
+#[cfg(feature = "ssr")]
 #[tokio::main]
 async fn main() {
-    use axum::{
-        error_handling::HandleErrorLayer,
-        handler::HandlerService,
-        routing::{get, get_service, MethodRouter},
-    };
-    use leptos::LeptosOptions;
-    use tower::{service_fn, Service};
-
     simple_logger::init_with_level(log::Level::Info).expect("couldn't initialize logging");
 
     let conf = get_configuration(None).await.unwrap();
@@ -39,15 +65,23 @@ async fn main() {
         .leptos_routes(leptos_options.clone(), routes, |cx| view! { cx, <App/> })
         .fallback({
             let root = leptos_options.site_root.clone();
-            let handle_error = leptos_axum::render_app_to_stream(
+            let handle_error = leptos_axum::render_app_async(
                 leptos_options.clone(),
                 move |cx| view! {cx, <ErrorTemplate error=AppError::NotFound/>},
             );
 
-            let dir_server = ServeDir::new(root).fallback(service_fn(move |request| async move {
-                Ok(handle_error(request).await)
-            }));
-            get_service(dir_server)
+            let mut dir_service = ServeDir::new(root);
+            move |request: Request<Body>| async move {
+                let uri = request.uri().clone();
+
+                match dir_service.try_call(request).await {
+                    Ok(response) => {
+                        dbg!(uri);
+                        response.into_response()
+                    }
+                    _ => handle_error(Request::default()).await.into_response(),
+                }
+            }
         });
 
     log::info!("listening on http://{}", &addr);
