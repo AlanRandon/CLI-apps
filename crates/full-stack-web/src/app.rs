@@ -9,10 +9,10 @@ pub fn App(cx: Scope) -> impl IntoView {
 
     view! {
         cx,
-        // <Stylesheet id="leptos" href="/pkg/start-axum.css"/>
+        <Stylesheet id="leptos" href="/pkg/full-stack-web.css"/>
         <Title text="Welcome to Leptos"/>
         <Router>
-            <main>
+            <main class="grid place-items-center">
                 <Routes>
                     <Route path="" view=|cx| view! { cx, <HomePage/> }/>
                 </Routes>

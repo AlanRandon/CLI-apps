@@ -23,32 +23,6 @@ use {
 };
 
 #[cfg(feature = "ssr")]
-fn serve_dir(
-    root: &str,
-    fallback: impl Fn(Request<Body>) -> Pin<Box<dyn Future<Output = Response>>>,
-) -> ServiceFn<impl Fn(Request<Body>) -> Pin<Box<dyn Future<Output = Response>>>> {
-    service_fn(move |request: Request<Body>| {
-        Box::<dyn Future<Output = Response>>::pin(async move {
-            let uri = request.uri().clone();
-            let Ok(body) = tokio::fs::read_to_string(&format!("{root}{uri}")).await else {
-                return fallback(request).await;
-            };
-            Response::builder()
-                .header(
-                    "Content-Type",
-                    HeaderValue::from_str(
-                        mime_guess::from_path(Path::new(uri.path()))
-                            .first_raw()
-                            .unwrap_or("application/octet-stream"),
-                    )
-                    .unwrap(),
-                )
-                .body(body)
-        })
-    })
-}
-
-#[cfg(feature = "ssr")]
 #[tokio::main]
 async fn main() {
     simple_logger::init_with_level(log::Level::Info).expect("couldn't initialize logging");
@@ -74,13 +48,19 @@ async fn main() {
             move |request: Request<Body>| async move {
                 let uri = request.uri().clone();
 
-                match dir_service.try_call(request).await {
-                    Ok(response) => {
-                        dbg!(uri);
-                        response.into_response()
+                {
+                    let request = Request::builder()
+                        .uri(uri.clone())
+                        .body(Body::empty())
+                        .unwrap();
+                    if let Ok(response) = dir_service.try_call(request).await {
+                        if response.status() == StatusCode::OK {
+                            return response.into_response();
+                        }
                     }
-                    _ => handle_error(Request::default()).await.into_response(),
                 }
+
+                handle_error(Request::default()).await.into_response()
             }
         });
 

@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    @apply w-full h-full m-0 max-w-none;
+  }
+
+  body {
+    @apply min-h-full w-full m-0 grid place-items-center;
+  }
+
+  * {
+    @apply box-border;
+  }
+}
