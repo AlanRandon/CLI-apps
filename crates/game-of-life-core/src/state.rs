@@ -1,5 +1,7 @@
 use crate::{CellRenderInfo, Coordinates};
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
+
+#[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 
 #[cfg(test)]
@@ -36,12 +38,14 @@ impl State {
     pub fn new(width: usize, height: usize) -> Self {
         let length = width * height;
 
-        let cells = SmallRng::from_entropy()
+        let iter = SmallRng::from_entropy()
             .sample_iter::<bool, _>(Standard)
-            .take(length)
-            .par_bridge()
-            .map(CellState::from)
-            .collect();
+            .take(length);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let iter = iter.par_bridge();
+
+        let cells = iter.map(CellState::from).collect();
 
         Self {
             cells,
@@ -105,9 +109,13 @@ impl State {
     }
 
     fn next_state_buffer(&mut self) -> Vec<CellRenderInfo> {
-        let (internal_state, state): (Vec<_>, Vec<_>) = self
-            .cells
-            .par_iter()
+        #[cfg(not(target_arch = "wasm32"))]
+        let cells = self.cells.par_iter();
+
+        #[cfg(target_arch = "wasm32")]
+        let cells = self.cells.iter();
+
+        let (internal_state, state): (Vec<_>, Vec<_>) = cells
             .enumerate()
             .map(|(index, &state)| {
                 let coordinates = self.get_coordinates(index);

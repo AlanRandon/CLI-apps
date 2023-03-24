@@ -1,8 +1,8 @@
+use game_of_life_core::prelude as game_of_life;
 use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
 
-// TODO: render game of life
 #[component]
 pub fn App(cx: Scope) -> impl IntoView {
     provide_meta_context(cx);
@@ -23,11 +23,21 @@ pub fn App(cx: Scope) -> impl IntoView {
 
 #[component]
 fn HomePage(cx: Scope) -> impl IntoView {
-    let (count, set_count) = create_signal(cx, 0);
-    let on_click = move |_| set_count.update(|count| *count += 1);
+    let mut state = game_of_life::State::new(3, 3);
+    let (frame, set_frame) =
+        create_signal::<Vec<_>>(cx, state.next().unwrap().to_buffer(|state| state));
 
     view! { cx,
-        <h1>"Welcome to Leptos!"</h1>
-        <button on:click=on_click>"Click Me: " {move || count.get().to_string()}</button>
+        <div class="p-4 grid place-items-center bg-slate-500 text-white rounded">
+            <For
+                each=move || frame.clone()
+                key=|item| item.id
+                view=move |cx, state: game_of_life::CellState| {
+                    view! { cx,
+                        <div class="p-4 w-4 h-4 grid place-items-center rounded" class=("bg-slate-500", move || state == game_of_life::CellState::Dead)/>
+                    }
+                }
+            />
+        </div>
     }
 }
