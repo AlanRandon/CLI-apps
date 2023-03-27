@@ -177,4 +177,10 @@ impl Frame {
             .map(|CellRenderInfo { state, .. }| state_mapping(state))
             .collect()
     }
+
+    pub fn to_state_iter(self) -> impl Iterator<Item = CellState> {
+        self.buffer
+            .into_iter()
+            .map(|CellRenderInfo { state, .. }| state)
+    }
 }

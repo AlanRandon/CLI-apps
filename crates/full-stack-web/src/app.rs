@@ -24,17 +24,28 @@ pub fn App(cx: Scope) -> impl IntoView {
 #[component]
 fn HomePage(cx: Scope) -> impl IntoView {
     let mut state = game_of_life::State::new(3, 3);
-    let (frame, set_frame) =
-        create_signal::<Vec<_>>(cx, state.next().unwrap().to_buffer(|state| state));
 
-    view! { cx,
+    let cells: Vec<_> = state
+        .next()
+        .unwrap()
+        .to_state_iter()
+        .enumerate()
+        .map(move |(id, state)| {
+            let (state, set_state) = create_signal(cx, state);
+            (id, state, set_state)
+        })
+        .collect();
+
+    view! {
+        cx,
         <div class="p-4 grid place-items-center bg-slate-500 text-white rounded">
             <For
-                each=move || frame.clone()
-                key=|item| item.id
-                view=move |cx, state: game_of_life::CellState| {
-                    view! { cx,
-                        <div class="p-4 w-4 h-4 grid place-items-center rounded" class=("bg-slate-500", move || state == game_of_life::CellState::Dead)/>
+                each=move || cells.clone().into_iter()
+                key=|(id, _, _)| id.clone()
+                view=move |cx, (_, state, _)| {
+                    view! {
+                        cx,
+                        <div class="p-4 w-4 h-4 grid place-items-center rounded" class=("bg-slate-500", move || state.get() == game_of_life::CellState::Dead)/>
                     }
                 }
             />
