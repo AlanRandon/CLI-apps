@@ -1,24 +1,12 @@
-use full_stack_web::app::{App, AppProps};
-use http::{HeaderValue, StatusCode};
-use std::{future::Future, path::Path, pin::Pin};
+use game_of_life_leptos::app::{App, AppProps};
+use http::StatusCode;
 
 #[cfg(feature = "ssr")]
 use {
-    axum::{
-        body::{Body, HttpBody},
-        error_handling::HandleErrorLayer,
-        extract::Extension,
-        http::Request,
-        response::{IntoResponse, Response},
-        routing::post,
-        routing::{get, get_service, MethodRouter},
-        BoxError, RequestExt, Router,
-    },
-    full_stack_web::error_template::{AppError, ErrorTemplate, ErrorTemplateProps},
-    leptos::{get_configuration, view, LeptosOptions},
+    axum::{body::Body, http::Request, response::IntoResponse, routing::post, Router},
+    game_of_life_leptos::error_template::{AppError, ErrorTemplate, ErrorTemplateProps},
+    leptos::{get_configuration, view},
     leptos_axum::{generate_route_list, LeptosRoutes},
-    std::sync::Arc,
-    tower::{service_fn, util::ServiceFn, Service, ServiceBuilder, ServiceExt},
     tower_http::services::ServeDir,
 };
 

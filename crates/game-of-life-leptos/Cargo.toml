@@ -1,5 +1,5 @@
 [package]
-name = "full-stack-web"
+name = "game-of-life-leptos"
 version = "0.1.0"
 edition = "2021"
 
@@ -67,7 +67,7 @@ denylist = [
 skip_feature_sets = [["ssr", "hydrate"]]
 
 [package.metadata.leptos]
-output-name = "full-stack-web"
+output-name = "game-of-life-leptos"
 site-root = "target/site"
 site-pkg-dir = "pkg"
 assets-dir = "public"

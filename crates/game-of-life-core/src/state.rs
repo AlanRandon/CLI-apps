@@ -1,5 +1,6 @@
 use crate::{CellRenderInfo, Coordinates};
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
+use std::ops::Not;
 
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
@@ -20,6 +21,17 @@ impl From<bool> for CellState {
             Self::Alive
         } else {
             Self::Dead
+        }
+    }
+}
+
+impl Not for CellState {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Self::Alive => Self::Dead,
+            Self::Dead => Self::Alive,
         }
     }
 }
@@ -145,6 +157,21 @@ impl State {
         self.cells = internal_state;
 
         state
+    }
+
+    pub fn replace_at_index(&mut self, index: usize, new_state: CellState) -> Option<CellState> {
+        let state = self.cells.get_mut(index)?;
+        Some(std::mem::replace(state, new_state))
+    }
+
+    #[must_use]
+    pub fn at_index(&self, index: usize) -> Option<CellState> {
+        self.cells.get(index).copied()
+    }
+
+    #[must_use]
+    pub fn cells(&self) -> Vec<CellState> {
+        self.cells.clone()
     }
 }
 
