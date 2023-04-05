@@ -1,0 +1,17 @@
+{
+	"name": "webgl",
+	"version": "1.0.0",
+	"description": "",
+	"scripts": {
+		"prestart": "wasm-pack build --target web --out-dir=.dist --out-name=entry && esbuild init.ts --bundle=true --allow-overwrite --outdir=.dist --format=esm",
+		"start": "cargo run"
+	},
+	"keywords": [],
+	"author": "",
+	"type": "module",
+	"license": "ISC",
+	"devDependencies": {
+		"esbuild": "^0.17.15",
+		"wasm-pack": "^0.10.3"
+	}
+}
