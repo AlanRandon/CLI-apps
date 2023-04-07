@@ -7,10 +7,10 @@ pub struct AppProps {
     pub page: Page,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum Page {
     Index,
-    NotFound,
+    NotFound { uri: String },
     Error,
 }
 
@@ -28,21 +28,59 @@ impl AppProps {
 
 #[component]
 pub fn App<G: Html>(cx: Scope, props: AppProps) -> View<G> {
-    let count = create_signal(cx, 0);
-    view! {
-        cx,
-        div {
-            (count.get())
+    match props.page {
+        Page::Index => {
+            let valid_range = 0..10;
+            let count = create_signal(cx, 0);
+
+            let increment = |_| count.set(*count.get() + 1);
+            let decrement = |_| count.set(*count.get() - 1);
+
+            view! {
+                cx,
+                div(class="flex gap-4 items-center") {
+                    button(
+                        on:click = decrement,
+                        class="btn",
+                        disabled=*count.get() <= valid_range.start
+                    ) {
+                        "-1"
+                    }
+                    div {
+                        (count.get())
+                    }
+                    button(
+                        on:click = increment,
+                        class="btn",
+                        disabled=*count.get() >= (valid_range.end - 1)
+                    ) {
+                        "+1"
+                    }
+                }
+            }
         }
-        button(on:click = |_| count.set(*count.get() + 1)) {
-            "Click Me"
+        Page::NotFound { uri } => {
+            view! {
+                cx,
+                h1 {
+                    (format!("Cannot find page \"{uri}\""))
+                }
+            }
+        }
+        Page::Error => {
+            view! {
+                cx,
+                h1 {
+                    "An error occurred"
+                }
+            }
         }
     }
 }
 
 pub fn app_string(props: AppProps) -> String {
     sycamore::render_to_string(move |cx| {
-        let encoded_props = props.clone().encode();
+        let encoded_props = props.encode();
         view! {
             cx,
             html(data-props = encoded_props) {
@@ -50,7 +88,8 @@ pub fn app_string(props: AppProps) -> String {
                     title {
                         "Hello World"
                     }
-                    script(type = "module", src = "init.js")
+                    script(src="init.js", type="module")
+                    link(rel="stylesheet", href="style.css")
                 }
                 body {
                     App(props)
