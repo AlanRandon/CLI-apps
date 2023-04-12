@@ -3,13 +3,14 @@ use crossterm::{
     style::{Color, PrintStyledContent, Stylize},
     terminal, QueueableCommand,
 };
+use nalgebra::Vector2;
 use ndarray::Array2;
 use std::{
     io::{Stdout, Write},
     ops::Range,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum CellKind {
     Ball,
     Paddle,
@@ -27,6 +28,7 @@ impl CellKind {
     }
 }
 
+#[derive(Debug)]
 pub struct Rectangle {
     x: f32,
     y: f32,
@@ -37,14 +39,14 @@ pub struct Rectangle {
 
 impl Rectangle {
     fn x_range(&self) -> Range<usize> {
-        let start = self.x.max(0.) as _;
-        let end = (self.x + self.width).max(0.) as _;
+        let start = self.x.floor() as _;
+        let end = (self.x + self.width).ceil() as _;
         start..end
     }
 
     fn y_range(&self) -> Range<usize> {
-        let start = self.y.max(0.) as _;
-        let end = (self.y + self.height).max(0.) as _;
+        let start = self.y.floor() as _;
+        let end = (self.y + self.height).ceil() as _;
         start..end
     }
 
@@ -57,17 +59,74 @@ impl Rectangle {
             cell_kind,
         }
     }
+
+    pub fn move_by(&mut self, x_move: f32, y_move: f32) {
+        let Self { x, y, .. } = self;
+        *x += x_move;
+        *y += y_move;
+    }
+
+    pub fn center(&self) -> Vector2<f32> {
+        let x = self.x + (self.width / 2.);
+        let y = self.y + (self.height / 2.);
+        Vector2::new(x, y)
+    }
 }
 
 impl Render for Rectangle {
     fn render(&self, terminal: &mut Terminal) {
         let x_range = self.x_range();
-        for y in self.y_range() {
-            for x in x_range.clone() {
-                *terminal.cells.get_mut([x, y]).unwrap() = self.cell_kind
+        let y_range = self.y_range();
+
+        let term_height = terminal.height as usize;
+        let term_width = terminal.width as usize;
+
+        for y in 0..term_height {
+            if y_range.contains(&y) {
+                for x in 0..term_width {
+                    if x_range.contains(&x) {
+                        *terminal.cells.get_mut([y, x]).unwrap() = self.cell_kind
+                    }
+                }
             }
         }
     }
+}
+
+pub trait Overlaps {
+    fn overlaps(&self, other: &Self) -> bool;
+}
+
+impl<T> Overlaps for Range<T>
+where
+    T: std::cmp::Ord + Copy,
+{
+    fn overlaps(&self, other: &Self) -> bool {
+        self.end.min(other.end) >= self.start.max(other.start)
+    }
+}
+
+#[test]
+fn range_overlap() {
+    assert!(!(0..10).overlaps(&(11..12)));
+    assert!((10..12).overlaps(&(11..30)));
+}
+
+impl Overlaps for Rectangle {
+    fn overlaps(&self, other: &Self) -> bool {
+        self.x_range().overlaps(&other.x_range()) & self.y_range().overlaps(&self.y_range())
+    }
+}
+
+#[test]
+fn rectange_overlap() {
+    let a = Rectangle::new((0.)..3., (0.)..3., CellKind::Empty);
+    let b = Rectangle::new((5.)..6., (0.)..3., CellKind::Empty);
+    assert!(!a.overlaps(&b));
+
+    let a = Rectangle::new((0.)..3., (0.)..3., CellKind::Empty);
+    let b = Rectangle::new(2.9..5., (0.)..3., CellKind::Empty);
+    assert!(a.overlaps(&b));
 }
 
 pub struct Clear;
@@ -96,7 +155,7 @@ impl Terminal {
 
     fn from_size(width: u16, height: u16) -> Self {
         Self {
-            cells: Array2::from_elem((width as usize, height as usize), CellKind::Empty),
+            cells: Array2::from_elem((height as usize, width as usize), CellKind::Empty),
             width,
             height,
         }

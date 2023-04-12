@@ -10,3 +10,4 @@ crossterm = { workspace = true, features = ["event-stream"] }
 tokio = { workspace = true }
 futures = { workspace = true }
 ndarray = "0.15"
+nalgebra = "0.32"

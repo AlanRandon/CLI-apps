@@ -1,9 +1,12 @@
 use crossterm::{
-    cursor,
-    event::{DisableMouseCapture, EnableMouseCapture},
+    cursor::{self, MoveTo},
+    event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode},
     execute,
+    style::Print,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
 };
+use futures::{join, FutureExt, StreamExt};
 use game::GameState;
 use std::time::Duration;
 use terminal::Terminal;
@@ -14,8 +17,9 @@ mod terminal;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new()?;
-    let game_state = GameState::new(&terminal);
+    let mut game_state = GameState::new(&terminal);
     let mut stdout = std::io::stdout();
+    let mut event_stream = EventStream::new();
 
     enable_raw_mode()?;
     execute!(
@@ -25,10 +29,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cursor::Hide,
     )?;
 
-    terminal.render(&game_state);
-    terminal.render_to_stdout(&mut stdout)?;
+    loop {
+        // stdout.execute(crossterm::terminal::Clear(
+        //     crossterm::terminal::ClearType::Purge,
+        // ));
+        terminal.render(&game_state);
+        terminal.render_to_stdout(&mut stdout)?;
+        game_state.update();
 
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+        let sleeper = tokio::time::sleep(Duration::from_millis(100)).fuse();
+
+        tokio::select! {
+            event = event_stream.next().fuse() => {
+                let Some(event) = event else {
+                    continue;
+                };
+                let event = event?;
+                if event == Event::Key(KeyCode::Char('q').into()) {
+                    break
+                };
+            }
+            _ = sleeper => {}
+        }
+    }
 
     disable_raw_mode()?;
     execute!(
@@ -37,8 +60,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         DisableMouseCapture,
         cursor::Show,
     )?;
-
-    dbg!(&game_state);
 
     Ok(())
 }
