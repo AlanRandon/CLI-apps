@@ -93,7 +93,7 @@ impl Ball {
     }
 
     fn update(&mut self, root: &Rectangle, left_paddle: &Paddle, right_paddle: &Paddle) {
-        // FIXME: make ball bounce from edges, paddles, and detect if someone has lost
+        // TODO: make ball bounce from edges, paddles, and detect if someone has lost
 
         let rectangle = &mut self.rectangle;
         rectangle.move_by(self.direction.x, self.direction.y);
@@ -109,7 +109,7 @@ impl Ball {
             .execute(MoveTo(0, 0))
             .unwrap()
             .execute(Print(
-                format!("{} {self:?}", rectangle.overlaps(root)).as_str(),
+                format!("{:#?}\n{rectangle:#?}\n{root:#?}", rectangle.overlaps(root)).as_str(),
             ))
             .unwrap();
     }

@@ -10,7 +10,7 @@ use std::{
     ops::Range,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CellKind {
     Ball,
     Paddle,
@@ -28,7 +28,7 @@ impl CellKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Rectangle {
     x: f32,
     y: f32,
@@ -114,7 +114,9 @@ fn range_overlap() {
 
 impl Overlaps for Rectangle {
     fn overlaps(&self, other: &Self) -> bool {
-        self.x_range().overlaps(&other.x_range()) & self.y_range().overlaps(&self.y_range())
+        let x_overlaps = self.x_range().overlaps(&other.x_range());
+        let y_overlaps = self.y_range().overlaps(&other.y_range());
+        x_overlaps & y_overlaps
     }
 }
 
@@ -127,6 +129,24 @@ fn rectange_overlap() {
     let a = Rectangle::new((0.)..3., (0.)..3., CellKind::Empty);
     let b = Rectangle::new(2.9..5., (0.)..3., CellKind::Empty);
     assert!(a.overlaps(&b));
+
+    let a = Rectangle::new((0.)..1., (0.)..100., CellKind::Empty);
+    let b = Rectangle::new((0.)..1., (101.)..102., CellKind::Empty);
+    assert!(!a.overlaps(&b));
+}
+
+#[test]
+fn rectange_creation() {
+    assert_eq!(
+        Rectangle::new((100.)..101., (100.)..101., CellKind::Empty),
+        Rectangle {
+            x: 100.,
+            y: 100.,
+            width: 1.,
+            height: 1.,
+            cell_kind: CellKind::Empty
+        }
+    )
 }
 
 pub struct Clear;
