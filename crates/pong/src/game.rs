@@ -47,6 +47,13 @@ impl Render for GameState {
         terminal.render(&self.left_paddle);
         terminal.render(&self.right_paddle);
         terminal.render(&self.ball);
+
+        // debug current state
+        std::io::stdout()
+            .execute(MoveTo(0, 0))
+            .unwrap()
+            .execute(Print(format!("{:#?}\n", self.left_paddle)))
+            .unwrap();
     }
 }
 
@@ -96,22 +103,25 @@ impl Ball {
         // TODO: make ball bounce from edges, paddles, and detect if someone has lost
 
         let rectangle = &mut self.rectangle;
-        rectangle.move_by(self.direction.x, self.direction.y);
+        rectangle.move_by(self.direction);
 
         if !rectangle.overlaps(root) {
             let ball_center = rectangle.center();
             let root_center = root.center();
-            self.direction = (root_center - ball_center).normalize();
-        }
+            let normal = if root_center.y < ball_center.y {
+                Vector2::new(1., 0.)
+            } else {
+                Vector2::new(-1., 0.)
+            };
+            let incidence_direction = self.direction;
 
-        // debug current state
-        std::io::stdout()
-            .execute(MoveTo(0, 0))
-            .unwrap()
-            .execute(Print(
-                format!("{:#?}\n{rectangle:#?}\n{root:#?}", rectangle.overlaps(root)).as_str(),
-            ))
-            .unwrap();
+            // https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
+            // reflection = incidence - 2(incidence . normal)normal
+            let reflected_direction =
+                incidence_direction - 2. * incidence_direction.dot(&normal) * normal;
+
+            self.direction = reflected_direction.normalize();
+        }
     }
 }
 

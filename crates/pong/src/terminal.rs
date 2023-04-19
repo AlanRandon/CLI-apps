@@ -30,65 +30,57 @@ impl CellKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rectangle {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
+    top_left: Vector2<f32>,
+    bottom_right: Vector2<f32>,
     cell_kind: CellKind,
 }
 
 impl Rectangle {
-    fn x_range(&self) -> Range<usize> {
-        let start = self.x.floor() as _;
-        let end = (self.x + self.width).ceil() as _;
-        start..end
-    }
-
-    fn y_range(&self) -> Range<usize> {
-        let start = self.y.floor() as _;
-        let end = (self.y + self.height).ceil() as _;
-        start..end
+    fn ranges(&self) -> Vector2<Range<f32>> {
+        self.top_left
+            .zip_map(&self.bottom_right, |start, end| start..end)
     }
 
     pub fn new(x: Range<f32>, y: Range<f32>, cell_kind: CellKind) -> Self {
         Self {
-            x: x.start,
-            y: y.start,
-            width: x.end - x.start,
-            height: y.end - y.start,
+            top_left: Vector2::new(x.start, y.start),
+            bottom_right: Vector2::new(x.end, y.end),
             cell_kind,
         }
     }
 
-    pub fn move_by(&mut self, x_move: f32, y_move: f32) {
-        let Self { x, y, .. } = self;
-        *x += x_move;
-        *y += y_move;
+    pub fn move_by(&mut self, change: Vector2<f32>) {
+        let Self {
+            top_left,
+            bottom_right,
+            ..
+        } = self;
+        *top_left += change;
+        *bottom_right += change;
     }
 
     pub fn center(&self) -> Vector2<f32> {
-        let x = self.x + (self.width / 2.);
-        let y = self.y + (self.height / 2.);
-        Vector2::new(x, y)
+        self.ranges().map(|Range { start, end }| (start + end) / 2.)
+    }
+
+    pub fn dimensions(&self) -> Vector2<f32> {
+        self.ranges().map(|Range { start, end }| end - start)
     }
 }
 
 impl Render for Rectangle {
     fn render(&self, terminal: &mut Terminal) {
-        let x_range = self.x_range();
-        let y_range = self.y_range();
+        let ranges = self
+            .ranges()
+            .map(|Range { start, end }| (start.floor() as usize)..(end.ceil() as usize));
 
         let term_height = terminal.height as usize;
         let term_width = terminal.width as usize;
 
-        for y in 0..term_height {
-            if y_range.contains(&y) {
-                for x in 0..term_width {
-                    if x_range.contains(&x) {
-                        *terminal.cells.get_mut([y, x]).unwrap() = self.cell_kind
-                    }
-                }
-            }
+        for (x, y) in std::iter::zip(0..term_width, 0..term_height)
+            .filter(|(x, y)| ranges.x.contains(x) & ranges.y.contains(y))
+        {
+            *terminal.cells.get_mut([y, x]).unwrap() = self.cell_kind
         }
     }
 }
@@ -97,10 +89,13 @@ pub trait Overlaps {
     fn overlaps(&self, other: &Self) -> bool;
 }
 
-impl<T> Overlaps for Range<T>
-where
-    T: std::cmp::Ord + Copy,
-{
+impl Overlaps for Range<usize> {
+    fn overlaps(&self, other: &Self) -> bool {
+        self.end.min(other.end) >= self.start.max(other.start)
+    }
+}
+
+impl Overlaps for Range<f32> {
     fn overlaps(&self, other: &Self) -> bool {
         self.end.min(other.end) >= self.start.max(other.start)
     }
@@ -114,9 +109,9 @@ fn range_overlap() {
 
 impl Overlaps for Rectangle {
     fn overlaps(&self, other: &Self) -> bool {
-        let x_overlaps = self.x_range().overlaps(&other.x_range());
-        let y_overlaps = self.y_range().overlaps(&other.y_range());
-        x_overlaps & y_overlaps
+        self.ranges()
+            .zip_map(&other.ranges(), |a, b| a.overlaps(&b))
+            .fold(true, std::ops::BitAnd::bitand)
     }
 }
 
@@ -140,10 +135,8 @@ fn rectange_creation() {
     assert_eq!(
         Rectangle::new((100.)..101., (100.)..101., CellKind::Empty),
         Rectangle {
-            x: 100.,
-            y: 100.,
-            width: 1.,
-            height: 1.,
+            top_left: Vector2::new(100., 100.),
+            bottom_right: Vector2::new(101., 101.),
             cell_kind: CellKind::Empty
         }
     )
