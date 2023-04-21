@@ -33,9 +33,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // stdout.execute(crossterm::terminal::Clear(
         //     crossterm::terminal::ClearType::Purge,
         // ));
+        let debug_text = game_state.update();
         terminal.render(&game_state);
         terminal.render_to_stdout(&mut stdout)?;
-        game_state.update();
+
+        if let Some(debug_text) = debug_text {
+            // debug current state
+            std::io::stdout()
+                .execute(MoveTo(0, 0))
+                .unwrap()
+                .execute(Print(format!("Debug: {debug_text}\n")))
+                .unwrap();
+        }
 
         let sleeper = tokio::time::sleep(Duration::from_millis(100)).fuse();
 

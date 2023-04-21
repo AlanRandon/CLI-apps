@@ -1,5 +1,4 @@
 use crate::terminal::{CellKind, Clear, Overlaps, Rectangle, Render, Terminal};
-use crossterm::{cursor::MoveTo, style::Print, ExecutableCommand};
 use nalgebra::Vector2;
 
 #[derive(Debug)]
@@ -24,9 +23,9 @@ pub struct GameState {
 
 impl GameState {
     pub fn new(terminal: &Terminal) -> Self {
-        let (width, height) = terminal.dimensions();
-        let width = width as f32;
-        let height = height as f32;
+        let terminal_dimensions = terminal.dimensions();
+        let width = terminal_dimensions.x as f32;
+        let height = terminal_dimensions.y as f32;
         Self {
             left_paddle: Paddle::new(Side::Left, height / 2., width),
             right_paddle: Paddle::new(Side::Right, height / 2., width),
@@ -35,9 +34,12 @@ impl GameState {
         }
     }
 
-    pub fn update(&mut self) {
+    /// May return a debugging string
+    pub fn update(&mut self) -> Option<String> {
         self.ball
             .update(&self.root_rectangle, &self.left_paddle, &self.right_paddle);
+
+        Some(format!("{:?}", self.ball.direction))
     }
 }
 
@@ -47,13 +49,6 @@ impl Render for GameState {
         terminal.render(&self.left_paddle);
         terminal.render(&self.right_paddle);
         terminal.render(&self.ball);
-
-        // debug current state
-        std::io::stdout()
-            .execute(MoveTo(0, 0))
-            .unwrap()
-            .execute(Print(format!("{:#?}\n", self.left_paddle)))
-            .unwrap();
     }
 }
 
@@ -95,33 +90,43 @@ impl Ball {
     fn new(x: f32, y: f32) -> Self {
         Self {
             rectangle: Rectangle::new((x - 0.5)..(x + 0.5), (y - 0.5)..(y + 0.5), CellKind::Ball),
-            direction: Vector2::new(0.5, 0.5),
+            direction: Vector2::new(1., 1.).normalize(),
         }
     }
 
     fn update(&mut self, root: &Rectangle, left_paddle: &Paddle, right_paddle: &Paddle) {
         // TODO: make ball bounce from edges, paddles, and detect if someone has lost
 
-        let rectangle = &mut self.rectangle;
-        rectangle.move_by(self.direction);
+        // FIXME: do not bounce if going toward center
 
-        if !rectangle.overlaps(root) {
-            let ball_center = rectangle.center();
-            let root_center = root.center();
-            let normal = if root_center.y < ball_center.y {
+        let rectangle = &mut self.rectangle;
+        let direction = &mut self.direction;
+
+        let ball_center = rectangle.center();
+        let root_center = root.center();
+        let y_offset = root_center.y - ball_center.y;
+
+        if !root.overlaps(rectangle) & direction.y {
+            let incidence_direction = *direction;
+
+            let normal = if y_offset.is_sign_positive() {
+                // ball below top
                 Vector2::new(1., 0.)
             } else {
+                // ball above top
                 Vector2::new(-1., 0.)
-            };
-            let incidence_direction = self.direction;
+            }
+            .normalize();
 
             // https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
             // reflection = incidence - 2(incidence . normal)normal
             let reflected_direction =
                 incidence_direction - 2. * incidence_direction.dot(&normal) * normal;
 
-            self.direction = reflected_direction.normalize();
+            *direction = reflected_direction.normalize();
         }
+
+        *rectangle = rectangle.moved_by(self.direction * 2.);
     }
 }
 

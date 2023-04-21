@@ -1,13 +1,13 @@
 use crossterm::{
     cursor::MoveTo,
-    style::{Color, PrintStyledContent, Stylize},
-    terminal, QueueableCommand,
+    style::{Color, Print, PrintStyledContent, Stylize},
+    terminal, ExecutableCommand, QueueableCommand,
 };
 use nalgebra::Vector2;
-use ndarray::Array2;
+use ndarray::{s, Array2};
 use std::{
     io::{Stdout, Write},
-    ops::Range,
+    ops::{Add, AddAssign, Range, Sub},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,19 +29,25 @@ impl CellKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Rectangle {
-    top_left: Vector2<f32>,
-    bottom_right: Vector2<f32>,
+pub struct Rectangle<T = f32>
+where
+    T: std::fmt::Debug + PartialEq + Copy + 'static,
+{
+    top_left: Vector2<T>,
+    bottom_right: Vector2<T>,
     cell_kind: CellKind,
 }
 
-impl Rectangle {
-    fn ranges(&self) -> Vector2<Range<f32>> {
+impl<T> Rectangle<T>
+where
+    T: std::fmt::Debug + PartialEq + Copy,
+{
+    fn ranges(&self) -> Vector2<Range<T>> {
         self.top_left
             .zip_map(&self.bottom_right, |start, end| start..end)
     }
 
-    pub fn new(x: Range<f32>, y: Range<f32>, cell_kind: CellKind) -> Self {
+    pub fn new(x: Range<T>, y: Range<T>, cell_kind: CellKind) -> Self {
         Self {
             top_left: Vector2::new(x.start, y.start),
             bottom_right: Vector2::new(x.end, y.end),
@@ -49,39 +55,44 @@ impl Rectangle {
         }
     }
 
-    pub fn move_by(&mut self, change: Vector2<f32>) {
-        let Self {
-            top_left,
-            bottom_right,
-            ..
-        } = self;
-        *top_left += change;
-        *bottom_right += change;
+    pub fn moved_by(&self, amount: Vector2<T>) -> Self
+    where
+        Vector2<T>: Add<Output = Vector2<T>>,
+    {
+        Self {
+            top_left: self.top_left + amount,
+            bottom_right: self.bottom_right + amount,
+            cell_kind: self.cell_kind,
+        }
     }
 
-    pub fn center(&self) -> Vector2<f32> {
-        self.ranges().map(|Range { start, end }| (start + end) / 2.)
-    }
-
-    pub fn dimensions(&self) -> Vector2<f32> {
+    pub fn dimensions(&self) -> Vector2<T>
+    where
+        T: Sub<Output = T>,
+    {
         self.ranges().map(|Range { start, end }| end - start)
     }
 }
 
-impl Render for Rectangle {
+impl Rectangle<f32> {
+    pub fn center(&self) -> Vector2<f32> {
+        self.ranges().map(|Range { start, end }| (start + end) / 2.)
+    }
+}
+
+impl Render for Rectangle<f32> {
     fn render(&self, terminal: &mut Terminal) {
-        let ranges = self
-            .ranges()
-            .map(|Range { start, end }| (start.floor() as usize)..(end.ceil() as usize));
+        let terminal_ranges = terminal.rectangle.ranges();
+        let ranges = self.ranges();
+        let ranges = terminal_ranges.zip_map(&ranges, |terminal_range, range| {
+            (range.start as usize).clamp(terminal_range.start, terminal_range.end)
+                ..(range.end as usize).clamp(terminal_range.start, terminal_range.end)
+        });
 
-        let term_height = terminal.height as usize;
-        let term_width = terminal.width as usize;
-
-        for (x, y) in std::iter::zip(0..term_width, 0..term_height)
-            .filter(|(x, y)| ranges.x.contains(x) & ranges.y.contains(y))
-        {
-            *terminal.cells.get_mut([y, x]).unwrap() = self.cell_kind
-        }
+        terminal
+            .cells
+            .slice_mut(s![ranges.y.clone(), ranges.x.clone()])
+            .fill(self.cell_kind);
     }
 }
 
@@ -156,8 +167,7 @@ pub trait Render {
 
 pub struct Terminal {
     cells: Array2<CellKind>,
-    width: u16,
-    height: u16,
+    rectangle: Rectangle<usize>,
 }
 
 impl Terminal {
@@ -167,10 +177,11 @@ impl Terminal {
     }
 
     fn from_size(width: u16, height: u16) -> Self {
+        let height = height as usize;
+        let width = width as usize;
         Self {
-            cells: Array2::from_elem((height as usize, width as usize), CellKind::Empty),
-            width,
-            height,
+            cells: Array2::from_elem((height, width), CellKind::Empty),
+            rectangle: Rectangle::new(0..width, 0..height, CellKind::Empty),
         }
     }
 
@@ -190,7 +201,7 @@ impl Terminal {
         object.render(self);
     }
 
-    pub fn dimensions(&self) -> (u16, u16) {
-        (self.width, self.height)
+    pub fn dimensions(&self) -> Vector2<usize> {
+        self.rectangle.dimensions()
     }
 }
