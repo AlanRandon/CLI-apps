@@ -7,6 +7,23 @@ pub enum Event {
     RightPaddle(PaddleEvent),
 }
 
+impl Event {
+    pub fn from_crossterm(event: crossterm::event::Event) -> Option<Self> {
+        use crossterm::event::{Event, KeyCode};
+
+        match event {
+            Event::Key(key) => match key.code {
+                KeyCode::Up => Some(Self::RightPaddle(PaddleEvent::MoveUp)),
+                KeyCode::Down => Some(Self::RightPaddle(PaddleEvent::MoveDown)),
+                KeyCode::Char('k') => Some(Self::LeftPaddle(PaddleEvent::MoveUp)),
+                KeyCode::Char('j') => Some(Self::LeftPaddle(PaddleEvent::MoveDown)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum PaddleEvent {
     MoveUp,
@@ -34,12 +51,12 @@ impl GameState {
         }
     }
 
-    /// May return a debugging string
-    pub fn update(&mut self) -> Option<String> {
-        self.ball
-            .update(&self.root_rectangle, &self.left_paddle, &self.right_paddle);
-
-        Some(format!("{:?}", self.ball.direction))
+    pub fn update<I>(&mut self, events: I)
+    where
+        I: Iterator<Item = Event>,
+    {
+        self.ball.handle_edge_bounce(&self.root_rectangle);
+        self.ball.update_position();
     }
 }
 
@@ -90,33 +107,31 @@ impl Ball {
     fn new(x: f32, y: f32) -> Self {
         Self {
             rectangle: Rectangle::new((x - 0.5)..(x + 0.5), (y - 0.5)..(y + 0.5), CellKind::Ball),
-            direction: Vector2::new(1., 1.).normalize(),
+            direction: Vector2::new(1., 3.).normalize(),
         }
     }
 
-    fn update(&mut self, root: &Rectangle, left_paddle: &Paddle, right_paddle: &Paddle) {
+    fn update_position(&mut self) {
         // TODO: make ball bounce from edges, paddles, and detect if someone has lost
+        let Self {
+            direction,
+            rectangle,
+        } = self;
+        *rectangle = rectangle.moved_by(*direction);
+    }
 
-        // FIXME: do not bounce if going toward center
+    /// Updates the direction to account for the top and bottom edges
+    fn handle_edge_bounce(&mut self, root: &Rectangle) {
+        let Self {
+            direction,
+            rectangle,
+        } = self;
 
-        let rectangle = &mut self.rectangle;
-        let direction = &mut self.direction;
+        let moved = rectangle.moved_by(*direction);
 
-        let ball_center = rectangle.center();
-        let root_center = root.center();
-        let y_offset = root_center.y - ball_center.y;
-
-        if !root.overlaps(rectangle) & direction.y {
+        if !root.overlaps(&moved) {
+            let normal = Vector2::<f32>::new(0., moved.center().y.signum()).normalize();
             let incidence_direction = *direction;
-
-            let normal = if y_offset.is_sign_positive() {
-                // ball below top
-                Vector2::new(1., 0.)
-            } else {
-                // ball above top
-                Vector2::new(-1., 0.)
-            }
-            .normalize();
 
             // https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
             // reflection = incidence - 2(incidence . normal)normal
@@ -125,8 +140,6 @@ impl Ball {
 
             *direction = reflected_direction.normalize();
         }
-
-        *rectangle = rectangle.moved_by(self.direction * 2.);
     }
 }
 

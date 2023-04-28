@@ -1,13 +1,13 @@
 use crossterm::{
     cursor::MoveTo,
-    style::{Color, Print, PrintStyledContent, Stylize},
-    terminal, ExecutableCommand, QueueableCommand,
+    style::{Color, PrintStyledContent, Stylize},
+    terminal, QueueableCommand,
 };
 use nalgebra::Vector2;
 use ndarray::{s, Array2};
 use std::{
     io::{Stdout, Write},
-    ops::{Add, AddAssign, Range, Sub},
+    ops::{Add, Range, Sub},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,10 +74,24 @@ where
     }
 }
 
+#[test]
+fn rectangle_ranges() {
+    let rectangle = Rectangle::new((0.)..1., (2.)..3., CellKind::Empty);
+    assert_eq!(rectangle.ranges(), Vector2::new((0.)..1., (2.)..3.))
+}
+
 impl Rectangle<f32> {
     pub fn center(&self) -> Vector2<f32> {
         self.ranges().map(|Range { start, end }| (start + end) / 2.)
     }
+}
+
+#[test]
+fn rectangle_center() {
+    let rectangle = Rectangle::new((0.)..1., (2.)..3., CellKind::Empty);
+    let center = rectangle.center();
+    assert_eq!(center, Vector2::new(0.5, 2.5));
+    assert_eq!(center.y, 2.5);
 }
 
 impl Render for Rectangle<f32> {
@@ -91,7 +105,7 @@ impl Render for Rectangle<f32> {
 
         terminal
             .cells
-            .slice_mut(s![ranges.y.clone(), ranges.x.clone()])
+            .slice_mut(s![ranges.x.clone(), ranges.y.clone()])
             .fill(self.cell_kind);
     }
 }
@@ -180,14 +194,14 @@ impl Terminal {
         let height = height as usize;
         let width = width as usize;
         Self {
-            cells: Array2::from_elem((height, width), CellKind::Empty),
+            cells: Array2::from_elem((width, height), CellKind::Empty),
             rectangle: Rectangle::new(0..width, 0..height, CellKind::Empty),
         }
     }
 
     pub fn render_to_stdout(&self, stdout: &mut Stdout) -> crossterm::Result<()> {
         stdout.queue(MoveTo(0, 0))?;
-        for cell in self.cells.iter() {
+        for cell in self.cells.t().iter() {
             cell.queue_command(stdout)?;
         }
         stdout.flush()?;
