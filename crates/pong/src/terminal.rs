@@ -1,13 +1,18 @@
 use crossterm::{
-    cursor::MoveTo,
+    cursor::{self, MoveTo},
+    event::{DisableMouseCapture, EnableMouseCapture},
+    execute,
     style::{Color, PrintStyledContent, Stylize},
-    terminal, QueueableCommand,
+    terminal::{
+        self, disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    },
+    QueueableCommand,
 };
 use nalgebra::Vector2;
 use ndarray::{s, Array2};
 use std::{
-    io::{Stdout, Write},
-    ops::{Add, Range, Sub},
+    io::{self, Stdout, Write},
+    ops::{Add, AddAssign, Neg, Range, Sub},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +76,18 @@ where
         T: Sub<Output = T>,
     {
         self.ranges().map(|Range { start, end }| end - start)
+    }
+
+    /// grows all edges by amount
+    pub fn grow(&self, amount: T) -> Self
+    where
+        T: Add<Output = T> + Neg<Output = T> + AddAssign,
+    {
+        Self {
+            top_left: self.top_left.add_scalar(-amount),
+            bottom_right: self.bottom_right.add_scalar(amount),
+            cell_kind: self.cell_kind,
+        }
     }
 }
 
@@ -218,4 +235,26 @@ impl Terminal {
     pub fn dimensions(&self) -> Vector2<usize> {
         self.rectangle.dimensions()
     }
+}
+
+pub fn enter_alternate_mode(stdout: &mut Stdout) -> io::Result<()> {
+    enable_raw_mode()?;
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        cursor::Hide,
+    )?;
+    Ok(())
+}
+
+pub fn exit_alternate_mode(stdout: &mut Stdout) -> io::Result<()> {
+    disable_raw_mode()?;
+    execute!(
+        stdout,
+        LeaveAlternateScreen,
+        DisableMouseCapture,
+        cursor::Show,
+    )?;
+    Ok(())
 }

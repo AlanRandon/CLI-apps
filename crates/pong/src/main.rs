@@ -1,15 +1,13 @@
 use crossterm::{
-    cursor::{self, MoveTo},
+    cursor,
     event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode},
     execute,
-    style::Print,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    ExecutableCommand,
 };
-use futures::{join, FutureExt, StreamExt, TryStreamExt};
-use game::GameState;
+use futures::{FutureExt, StreamExt};
+use game::{GameState, Win};
 use std::time::Duration;
-use terminal::Terminal;
+use terminal::{enter_alternate_mode, exit_alternate_mode, Terminal};
 
 mod game;
 mod terminal;
@@ -24,30 +22,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new()?;
     let mut game_state = GameState::new(&terminal);
     let mut stdout = std::io::stdout();
-    let mut event_stream = EventStream::new();
     let mut events = Vec::new();
 
-    enable_raw_mode()?;
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        EnableMouseCapture,
-        cursor::Hide,
-    )?;
-
-    // .(
-    //     |event| !matches!(event, Event::Key(key_event) if key_event.code == KeyCode::Char('q')),
-    // );
+    enter_alternate_mode(&mut stdout)?;
 
     'a: loop {
-        // stdout.execute(crossterm::terminal::Clear(
-        //     crossterm::terminal::ClearType::Purge,
-        // ));
-        game_state.update(events.drain(..));
+        if let Some(win) = game_state.update(events.drain(..)) {
+            exit_alternate_mode(&mut stdout)?;
+            let win_message = match win {
+                Win::Left => "Left has won.",
+                Win::Right => "Right has won.",
+            };
+            println!("{win_message}");
+            break;
+        };
         terminal.render(&game_state);
         terminal.render_to_stdout(&mut stdout)?;
 
-        let sleeper = tokio::time::sleep(Duration::from_millis(100)).fuse();
+        let sleeper = tokio::time::sleep(Duration::from_millis(20)).fuse();
 
         let mut event_stream = EventStream::new()
             .filter_map(|event| async { event.ok() })
@@ -69,19 +61,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         while let Some(event) = event_stream.next().await {
             match event {
-                EventPoll::Quit => break 'a,
+                EventPoll::Quit => {
+                    exit_alternate_mode(&mut stdout)?;
+                    break 'a;
+                }
                 EventPoll::Event(event) => events.push(event),
             }
         }
     }
-
-    disable_raw_mode()?;
-    execute!(
-        stdout,
-        LeaveAlternateScreen,
-        DisableMouseCapture,
-        cursor::Show,
-    )?;
 
     Ok(())
 }

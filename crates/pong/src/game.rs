@@ -31,6 +31,12 @@ pub enum PaddleEvent {
 }
 
 #[derive(Debug)]
+pub enum Win {
+    Left,
+    Right,
+}
+
+#[derive(Debug)]
 pub struct GameState {
     left_paddle: Paddle,
     right_paddle: Paddle,
@@ -51,12 +57,29 @@ impl GameState {
         }
     }
 
-    pub fn update<I>(&mut self, events: I)
+    pub fn update<I>(&mut self, events: I) -> Option<Win>
     where
         I: Iterator<Item = Event>,
     {
+        for event in events {
+            self.handle_event(event);
+        }
         self.ball.handle_edge_bounce(&self.root_rectangle);
+        self.ball
+            .handle_paddle_bounce(&self.left_paddle, Side::Left, &self.root_rectangle);
+        self.ball
+            .handle_paddle_bounce(&self.right_paddle, Side::Right, &self.root_rectangle);
         self.ball.update_position();
+        self.ball.handle_win(&self.root_rectangle)
+    }
+
+    pub fn handle_event(&mut self, event: Event) {
+        match event {
+            Event::LeftPaddle(event) => self.left_paddle.handle_event(&self.root_rectangle, event),
+            Event::RightPaddle(event) => {
+                self.right_paddle.handle_event(&self.root_rectangle, event)
+            }
+        }
     }
 }
 
@@ -83,6 +106,17 @@ impl Paddle {
             CellKind::Paddle,
         ))
     }
+
+    fn handle_event(&mut self, root: &Rectangle, event: PaddleEvent) {
+        let y_change = match event {
+            PaddleEvent::MoveUp => -0.5,
+            PaddleEvent::MoveDown => 0.5,
+        };
+        let moved = self.0.moved_by(Vector2::new(0., y_change));
+        if moved.overlaps(&root.grow(-1.)) {
+            self.0 = moved;
+        }
+    }
 }
 
 impl Render for Paddle {
@@ -107,12 +141,27 @@ impl Ball {
     fn new(x: f32, y: f32) -> Self {
         Self {
             rectangle: Rectangle::new((x - 0.5)..(x + 0.5), (y - 0.5)..(y + 0.5), CellKind::Ball),
-            direction: Vector2::new(1., 3.).normalize(),
+            direction: Vector2::new(1., 0.).normalize(),
+        }
+    }
+
+    fn handle_win(&mut self, root: &Rectangle) -> Option<Win> {
+        let Self { rectangle, .. } = self;
+
+        if root.overlaps(rectangle) {
+            None
+        } else {
+            Some(if rectangle.center().x < root.center().x {
+                // ball on left
+                Win::Right
+            } else {
+                // ball on right
+                Win::Left
+            })
         }
     }
 
     fn update_position(&mut self) {
-        // TODO: make ball bounce from edges, paddles, and detect if someone has lost
         let Self {
             direction,
             rectangle,
@@ -120,7 +169,6 @@ impl Ball {
         *rectangle = rectangle.moved_by(*direction);
     }
 
-    /// Updates the direction to account for the top and bottom edges
     fn handle_edge_bounce(&mut self, root: &Rectangle) {
         let Self {
             direction,
@@ -130,15 +178,40 @@ impl Ball {
         let moved = rectangle.moved_by(*direction);
 
         if !root.overlaps(&moved) {
-            let normal = Vector2::<f32>::new(0., moved.center().y.signum()).normalize();
-            let incidence_direction = *direction;
+            let normal = Vector2::new(0., moved.center().y.signum()).normalize();
 
-            // https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
-            // reflection = incidence - 2(incidence . normal)normal
-            let reflected_direction =
-                incidence_direction - 2. * incidence_direction.dot(&normal) * normal;
+            let reflected_direction = reflect(*direction, normal);
 
             *direction = reflected_direction.normalize();
+        }
+    }
+
+    fn handle_paddle_bounce(&mut self, paddle: &Paddle, side: Side, root: &Rectangle) {
+        let Self {
+            direction,
+            rectangle,
+        } = self;
+
+        let moved = rectangle.moved_by(*direction);
+
+        // TODO: check if ball overlaps with bouding box of moved area
+        if paddle.0.overlaps(&moved) {
+            let y_distance_from_center = root.center().y - paddle.0.center().y;
+            let height = root.dimensions().y;
+
+            let normal = Vector2::new(
+                match side {
+                    Side::Left => 1.,
+                    Side::Right => -1.,
+                },
+                y_distance_from_center / height,
+            )
+            .normalize();
+
+            let reflected_direction = reflect(*direction, normal);
+
+            // increase speed with each bounce
+            *direction = reflected_direction * 1.05;
         }
     }
 }
@@ -147,4 +220,10 @@ impl Render for Ball {
     fn render(&self, terminal: &mut Terminal) {
         self.rectangle.render(terminal)
     }
+}
+
+fn reflect(incidence: Vector2<f32>, normal: Vector2<f32>) -> Vector2<f32> {
+    // https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
+    // reflection = incidence - 2(incidence . normal)normal
+    incidence - 2. * incidence.dot(&normal) * normal
 }
