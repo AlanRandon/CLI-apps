@@ -1,0 +1,10 @@
+[package]
+name = "parsing-fun"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+miette = { version = "5.8", features = ["fancy"] }
+nom.workspace = true
+nom-supreme = "0.8"
+thiserror.workspace = true

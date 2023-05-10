@@ -1,9 +1,4 @@
-use crossterm::{
-    cursor,
-    event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
+use crossterm::event::{Event, EventStream, KeyCode};
 use futures::{FutureExt, StreamExt};
 use game::{GameState, Win};
 use std::time::Duration;
