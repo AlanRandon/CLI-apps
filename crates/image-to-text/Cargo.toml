@@ -9,3 +9,4 @@ edition = "2021"
 clap.workspace = true
 crossterm.workspace = true
 image.workspace = true
+itertools.workspace = true
