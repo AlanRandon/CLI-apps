@@ -7,7 +7,6 @@ use crossterm::{
 use image::{imageops::FilterType, DynamicImage};
 use itertools::Itertools;
 use std::{
-    convert::Infallible,
     io::{self, BufWriter, Stdout, Write},
     iter,
 };
@@ -16,7 +15,7 @@ use std::{
 struct Args {
     #[arg(long, short)]
     input: String,
-    #[arg(long, short, default_value = "block-element-renderer")]
+    #[arg(long, short, default_value = "block-element")]
     renderer: Renderer,
 }
 
@@ -39,9 +38,9 @@ impl<T> IterExt for T where T: Iterator {}
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 enum Renderer {
-    ColorRenderer,
-    BlockElementRenderer,
-    AsciiRenderer,
+    Color,
+    BlockElement,
+    Ascii,
 }
 
 impl Render for Renderer {
@@ -49,9 +48,9 @@ impl Render for Renderer {
 
     fn render(self, image: DynamicImage, stdout: &mut Stdout) -> Result<(), Self::Err> {
         match self {
-            Self::ColorRenderer => ColorRenderer.render(image, stdout),
-            Self::BlockElementRenderer => BlockElementRenderer.render(image, stdout),
-            Self::AsciiRenderer => AsciiRenderer.render(image, stdout),
+            Self::Color => ColorRenderer.render(image, stdout),
+            Self::BlockElement => BlockElementRenderer.render(image, stdout),
+            Self::Ascii => AsciiRenderer.render(image, stdout),
         }
     }
 }
@@ -64,6 +63,7 @@ impl Render for ColorRenderer {
 
     fn render(self, image: DynamicImage, stdout: &mut Stdout) -> Result<(), Self::Err> {
         let (width, height) = terminal::size()?;
+        let image = image.resize_exact(image.width() * 2, image.height(), FilterType::Nearest);
         let image = image.resize(width as u32, height as u32, FilterType::Triangle);
         let image = image.to_rgb8();
 
@@ -95,12 +95,14 @@ impl Render for AsciiRenderer {
     type Err = crossterm::ErrorKind;
 
     fn render(self, image: DynamicImage, stdout: &mut Stdout) -> Result<(), Self::Err> {
-        const PALLETTE: &[u8] = " '.-~+=![{#$0".as_bytes();
+        const PALLETTE: &[u8] = "  ..-=::+*#%@X".as_bytes();
         const PALLETTE_SECTION_SIZE: f32 = PALLETTE.len() as f32 / 255.0;
 
         let (width, height) = terminal::size()?;
+        let image = image.resize_exact(image.width() * 2, image.height(), FilterType::Nearest);
         let image = image.resize(width as u32, height as u32, FilterType::Triangle);
         let image = image.to_luma8();
+
         let mut stdout = BufWriter::new(stdout);
 
         for row in image.rows() {
