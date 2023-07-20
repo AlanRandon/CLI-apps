@@ -65,7 +65,7 @@ where
     }
 
     pub fn insert_node(&mut self, data: T) -> NodeIdentifier {
-        let mut index = &mut self.next_id;
+        let index = &mut self.next_id;
         self.nodes.insert(*index, Node::new(data));
         let identifier = NodeIdentifier::new(*index);
         *index += 1;
