@@ -6,11 +6,14 @@ pub mod linked_list;
 
 #[cfg(test)]
 mod test {
+    pub use std::sync::Arc;
     use std::{
         alloc::{Allocator, Global},
         fmt::Debug,
+        sync::atomic::{AtomicIsize, Ordering},
     };
 
+    #[derive(Default)]
     pub struct TestingAllocator<A: Allocator = Global> {
         allocator: A,
     }
@@ -42,11 +45,41 @@ mod test {
         }
     }
 
-    pub struct DropWrapper<T: Debug>(pub T);
+    #[derive(Debug, Default)]
+    pub struct AllocationCounter {
+        allocations: AtomicIsize,
+    }
 
-    impl<T: Debug> Drop for DropWrapper<T> {
+    impl AllocationCounter {
+        pub fn new() -> Arc<Self> {
+            Arc::new(Self::default())
+        }
+
+        pub fn count<T: Debug>(self: Arc<Self>, data: T) -> CounterGuard<T> {
+            self.allocations.fetch_add(1, Ordering::SeqCst);
+            CounterGuard {
+                data,
+                counter: Arc::clone(&self),
+            }
+        }
+    }
+
+    impl Drop for AllocationCounter {
         fn drop(&mut self) {
-            println!("dropping {:?}...", self.0);
+            assert_eq!(self.allocations.load(Ordering::SeqCst), 0);
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct CounterGuard<T: Debug> {
+        pub data: T,
+        counter: Arc<AllocationCounter>,
+    }
+
+    impl<T: Debug> Drop for CounterGuard<T> {
+        fn drop(&mut self) {
+            println!("dropping {:?}", self.data);
+            self.counter.allocations.fetch_sub(1, Ordering::SeqCst);
         }
     }
 }
