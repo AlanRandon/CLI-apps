@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind utilities;
+@tailwind components;
+
+@layer base {
+	:root {
+		@apply w-full h-full m-0;
+  	}
+
+	* {
+		@apply box-border;
+	}
+}

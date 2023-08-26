@@ -1,0 +1,11 @@
+CREATE TABLE chats (
+	id INTEGER PRIMARY KEY,
+	name VARCHAR(100)
+);
+
+CREATE TABLE messages (
+	id INTEGER PRIMARY KEY,
+	chat INTEGER,
+	content TEXT,
+	FOREIGN KEY(chat) REFERENCES chat(id) ON DELETE CASCADE
+);

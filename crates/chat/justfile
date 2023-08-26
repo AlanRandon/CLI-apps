@@ -1,0 +1,13 @@
+export PATH := "./node_modules/.bin:" + env_var('PATH')
+
+run *args: alpine tailwindcss
+	cargo run -- {{args}}
+
+alpine:
+	esbuild src/init.ts --bundle --minify --outfile=.dist/init.js
+
+tailwindcss:
+	tailwindcss -i src/style.css -o .dist/style.css --minify
+
+clean:
+	rm -rf .dist

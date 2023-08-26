@@ -1,7 +1,5 @@
 [workspace]
-members = [
-    "crates/*",
-]
+members = ["crates/*"]
 
 [workspace.dependencies]
 clap = { version = "4.0", features = ["derive"] }
@@ -9,17 +7,25 @@ rand = "0.8"
 tui = "0.19"
 crossterm = "0.26"
 lazy_static = "1.4"
-reqwest = "0.11"
 itertools = "0.10"
 thiserror = "1"
 nom = "7.1"
 log = "0.4"
-# Image processing
+
+serde = { version = "1", features = ["rc", "derive"] }
+http-serde = "1.1"
+
+http = "0.2"
+reqwest = "0.11"
+hyper = { version = "0.14", features = ["full"] }
+
 palette = "0.6"
 image = "0.24"
 imageproc = "0.23"
-# Parallel/concurrent utilities + runtimes
+
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 rayon = "1.6"
 num-complex = "0.4"
+
+sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite"] }

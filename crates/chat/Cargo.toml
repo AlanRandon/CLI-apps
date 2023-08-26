@@ -1,0 +1,16 @@
+[package]
+name = "chat"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+itertools.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+http-serde.workspace = true
+http.workspace = true
+hyper.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+html-builder = { path = "../html-builder" }
+

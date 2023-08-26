@@ -23,4 +23,5 @@ Cargo.lock
 **/.dist
 
 crates/webgl/**.js
+crates/chat/data.db
 **/.style
