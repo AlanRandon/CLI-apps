@@ -12,5 +12,6 @@ http.workspace = true
 hyper.workspace = true
 tokio.workspace = true
 sqlx.workspace = true
+uuid.workspace = true
 html-builder = { path = "../html-builder" }
-
+serde_urlencoded = "0.7"

@@ -1,12 +1,13 @@
-import Alpine from "alpinejs"
 import "htmx.org"
 
-declare global {
-	interface Window {
-		Alpine: typeof Alpine
-	}
-}
+// import Alpine from "alpinejs"
 
-window.Alpine = Alpine
+// declare global {
+// 	interface Window {
+// 		Alpine: typeof Alpine
+// 	}
+// }
 
-Alpine.start()
+// window.Alpine = Alpine
+
+// Alpine.start()

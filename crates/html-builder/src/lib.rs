@@ -28,6 +28,14 @@ where
     )
 }
 
+pub fn text(s: impl Display) -> Node {
+    Node::Text(Text(s.to_string()))
+}
+
+pub fn raw_text(s: impl Display) -> Node {
+    Node::RawHtml(s.to_string())
+}
+
 #[derive(Debug, Clone)]
 pub enum Node {
     Element(Element),
@@ -168,14 +176,18 @@ impl Display for Attributes {
 }
 
 pub mod prelude {
-    pub use super::{document, Attributes, Element, Node, Text, VoidElement};
+    pub use super::html::{self, *};
+}
+
+pub mod html {
+    pub use super::{document, text, Attributes, Element, Node, Text, VoidElement};
     use std::fmt::Display;
 
     macro_rules! repeat {
-        ($macro:ident, $($names:ident),*) => {
-            $($macro!($names);)*
-        };
-    }
+            ($macro:ident, $($names:ident),*) => {
+                $($macro!($names);)*
+            };
+        }
 
     macro_rules! element {
         ($name:ident) => {
@@ -232,8 +244,15 @@ pub mod prelude {
                     self.attr(stringify!($name), value)
                 }
             }
+
+            impl VoidElement {
+                #[allow(dead_code)]
+                pub fn $name(self, value: impl Display) -> Self {
+                    self.attr(stringify!($name), value)
+                }
+            }
         };
     }
 
-    repeat!(attr, class, href);
+    repeat!(attr, class, href, id);
 }

@@ -1,26 +1,7 @@
-use html_builder::prelude::*;
-use http::{Method, Request, Response, Uri};
-use hyper::Body;
-use sqlx::{Pool, Sqlite};
 use std::convert::Infallible;
+use http::Uri;
 
-pub fn document(body: impl IntoIterator<Item = impl Into<Node>>) -> String {
-    let body = body.into_iter().map(Into::into).chain([Node::from(
-        script().child(Node::RawHtml(include_str!("../.dist/init.js").to_string())),
-    )]);
-
-    html_builder::document::<Node, _>(
-        [
-            title().text("App").into(),
-            style()
-                .child(Node::RawHtml(
-                    include_str!("../.dist/style.css").to_string(),
-                ))
-                .into(),
-        ],
-        body,
-    )
-}
+mod handler;
 
 #[tokio::main]
 async fn main() {
@@ -50,7 +31,7 @@ async fn main() {
                 let pool = pool.clone();
                 async move {
                     let pool = pool.clone();
-                    let result = handler(request, pool.clone()).await;
+                    let result = handler::handler(request, pool.clone()).await;
 
                     Ok::<_, Infallible>(result)
                 }
@@ -81,38 +62,3 @@ impl UriExt for Uri {
     }
 }
 
-async fn handler(request: Request<Body>, pool: Pool<Sqlite>) -> Response<Body> {
-    let segments = request.uri().segments();
-
-    if segments.is_empty() && request.method() == Method::GET {
-        return Response::builder()
-            .body(Body::from(document([button()
-                .attr("hx-post", "/create")
-                .text("Create Chat")])))
-            .unwrap();
-    }
-
-    match segments.split_first() {
-        Some((&"create", segments)) if segments.is_empty() && request.method() == Method::POST => {
-            // let Ok(record) = sqlx::query!(
-            //     "INSERT INTO chats (id, name) VALUES (NULL, ?) RETURNING id",
-            //     "New Chat"
-            // )
-            // .fetch_one(&pool)
-            // .await else {
-            //     todo!();
-            // };
-
-            // return Response::builder()
-            //     .body(Body::from(format!("Chat {} created", record.id)))
-            //     .unwrap();
-        }
-        _ => {}
-    }
-
-    Response::builder()
-        .body(Body::from(document([
-            h1().text(format!("Page {} not found", request.uri()))
-        ])))
-        .unwrap()
-}
