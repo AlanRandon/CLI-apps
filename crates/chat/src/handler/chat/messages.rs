@@ -8,15 +8,27 @@ use uuid::Uuid;
 
 pub async fn messages(pool: &Pool<Sqlite>, chat_id: Uuid) -> Result<impl Into<Node>, sqlx::Error> {
     let messages = sqlx::query!(
-        "SELECT content FROM chats INNER JOIN messages ON chats.id = messages.chat WHERE chats.id = ?",
+        r#"
+            SELECT content, (unixepoch() - unixepoch(creation_time)) as time_since
+            FROM chats INNER JOIN messages
+            ON chats.id = messages.chat
+            WHERE chats.id = ?"#,
         chat_id
-    ).fetch_all(pool).await?;
+    )
+    .fetch_all(pool)
+    .await?;
 
-    Ok(ul().children(
-        messages
-            .into_iter()
-            .map(|message| li().text(message.content)),
-    ))
+    Ok(ul()
+        .class("flex gap-4 flex-col")
+        .children(messages.into_iter().map(|message| {
+            li().class("rounded-[100vmax] rounded-bl-none bg-slate-200 p-4 w-fit")
+                .child(pre().class("font-sans").text(message.content))
+                .child(
+                    div()
+                        .class("text-sm")
+                        .attr("x-show-time-since", message.time_since.unwrap_or(0)),
+                )
+        })))
 }
 
 pub async fn handler(

@@ -35,6 +35,12 @@ pub async fn handler(
                 div()
                     .attr("hx-on:click", "this.remove()")
                     .text("Chat Created")
+                    .child(
+                        button()
+                            .attr("hx-get", format!("chat/{id}"))
+                            .attr("hx-target", "#chat")
+                            .text("View"),
+                    )
                     .to_string(),
             ))
             .unwrap(),

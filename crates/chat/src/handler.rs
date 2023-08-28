@@ -44,8 +44,6 @@ async fn chats(pool: Pool<Sqlite>) -> Result<impl Into<Node>, sqlx::Error> {
     })))
 }
 
-
-
 fn internal_server_error(message: impl Into<Node>) -> Response<Body> {
     Response::builder()
         .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -60,26 +58,30 @@ pub async fn handler(mut request: Request<Body>, pool: Pool<Sqlite>) -> Response
     if segments.is_empty() && request.method() == Method::GET {
         return Response::builder()
             .body(Body::from(document([div()
-                .child(div().id("notifications"))
-                .child(
-                    button()
-                        .attr("hx-post", "/create")
-                        .attr("hx-swap", "beforeend")
-                        .attr("hx-target", "#notifications")
-                        .text("Create Chat"),
-                )
+                .class("flex gap-4 h-full")
                 .child(
                     div()
-                        .id("chats")
-                        .attr("hx-get", "/chats")
-                        .attr("hx-trigger", "reload-chats from:body")
-                        .child(match chats(pool).await {
-                            Ok(chats) => chats.into(),
-                            Err(_) => html::text("Failed To Get Chats"),
-                        }),
+                        .class("bg-slate-500 rounded-r h-full p-4 text-white overflow-auto")
+                        .child(
+                            button()
+                                .attr("hx-post", "/create")
+                                .attr("hx-swap", "beforeend")
+                                .attr("hx-target", "#notifications")
+                                .text("Create Chat"),
+                        )
+                        .child(
+                            div()
+                                .id("chats")
+                                .attr("hx-get", "/chats")
+                                .attr("hx-trigger", "reload-chats from:body delay:100ms")
+                                .child(match chats(pool).await {
+                                    Ok(chats) => chats.into(),
+                                    Err(_) => html::text("Failed To Get Chats"),
+                                }),
+                        ),
                 )
-                .child(div().id("messages"))
-                .child(div().id("chat"))])))
+                .child(div().id("chat").class("grow"))
+                .child(div().id("notifications"))])))
             .unwrap();
     }
 

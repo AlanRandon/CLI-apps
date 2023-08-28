@@ -11,18 +11,24 @@ mod send;
 
 async fn chat(pool: &Pool<Sqlite>, id: Uuid) -> Result<impl Into<Node>, sqlx::Error> {
     Ok(div()
+        .class("h-full flex flex-col")
         .child(
             div()
-                .id("messages")
-                .attr("hx-get", format!("/messages?id={id}"))
-                .attr("hx-trigger", "reload-messages from:body")
-                .child(match messages::messages(pool, id).await {
-                    Ok(messages) => messages.into(),
-                    Err(_) => html::text("Failed To Get Messages"),
-                }),
+                .class("flex flex-col-reverse grow overflow-auto")
+                .child(
+                    div()
+                        .id("messages")
+                        .attr("hx-get", format!("/messages?id={id}"))
+                        .attr("hx-trigger", "reload-messages from:body, every 10s")
+                        .child(match messages::messages(pool, id).await {
+                            Ok(messages) => messages.into(),
+                            Err(_) => html::text("Failed To Get Messages"),
+                        }),
+                ),
         )
         .child(
             form()
+                .class("flex")
                 .attr("hx-post", "/send")
                 .attr("hx-swap", "beforeend")
                 .attr("hx-target", "#notifications")
@@ -30,6 +36,11 @@ async fn chat(pool: &Pool<Sqlite>, id: Uuid) -> Result<impl Into<Node>, sqlx::Er
                 .id("send-message")
                 .child(
                     textarea()
+                        .attr(
+                            "hx-on:keyup",
+                            "if (event.keyCode == 13 && !event.shiftKey) { this.parentElement.querySelector('input[type=submit]').click() }",
+                        )
+                        .class("resize-none grow")
                         .id("content")
                         .attr("name", "content")
                         .attr("placeholder", "message"),

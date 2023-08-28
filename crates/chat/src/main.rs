@@ -1,5 +1,5 @@
-use std::convert::Infallible;
 use http::Uri;
+use std::convert::Infallible;
 
 mod handler;
 
@@ -61,4 +61,3 @@ impl UriExt for Uri {
         segments
     }
 }
-

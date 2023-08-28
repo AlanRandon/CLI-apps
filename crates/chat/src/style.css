@@ -10,4 +10,8 @@
 	* {
 		@apply box-border;
 	}
+
+	body {
+		@apply h-full;
+	}
 }
