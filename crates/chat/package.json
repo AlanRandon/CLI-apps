@@ -1,11 +1,13 @@
 {
   "dependencies": {
+    "@tailwindcss/forms": "^0.5.6",
     "@tailwindcss/typography": "^0.5.9",
     "@types/alpinejs": "^3.7.2",
+    "@types/luxon": "^3.3.1",
     "alpinejs": "^3.12.3",
+    "date-fns": "^2.30.0",
     "esbuild": "^0.18.17",
     "htmx.org": "^1.9.5",
-    "moment": "^2.29.4",
     "tailwindcss": "^3.3.2"
   }
 }

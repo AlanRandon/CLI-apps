@@ -26,22 +26,30 @@ pub fn document(body: impl IntoIterator<Item = impl Into<Node>>) -> String {
     )
 }
 
-async fn chats(pool: Pool<Sqlite>) -> Result<impl Into<Node>, sqlx::Error> {
+async fn chats(pool: Pool<Sqlite>) -> Result<Node, sqlx::Error> {
     let chats = sqlx::query!("SELECT name, id FROM chats")
         .fetch_all(&pool)
         .await?;
 
-    Ok(ul().children(chats.into_iter().map(|chat| {
-        li().child(
-            button()
-                .text(chat.name)
-                .attr(
-                    "hx-get",
-                    format!("/chat/{}", Uuid::from_slice(&chat.id).unwrap()),
-                )
-                .attr("hx-target", "#chat"),
-        )
-    })))
+    if chats.is_empty() {
+        return Ok(html::text("No Chats"));
+    }
+
+    Ok(ul()
+        .children(chats.into_iter().map(|chat| {
+            li().class("flex flex-col gap-4 text-center").child(
+                button()
+                    .class("not-button")
+                    .text(chat.name)
+                    .attr(
+                        "hx-get",
+                        format!("/chat/{}", Uuid::from_slice(&chat.id).unwrap()),
+                    )
+                    .attr("hx-target", "#chat")
+                    .attr("hx-on:click", "this.blur()"),
+            )
+        }))
+        .into())
 }
 
 fn internal_server_error(message: impl Into<Node>) -> Response<Body> {
@@ -51,37 +59,64 @@ fn internal_server_error(message: impl Into<Node>) -> Response<Body> {
         .unwrap()
 }
 
+fn bad_request(message: impl Into<Node>) -> Response<Body> {
+    Response::builder()
+        .status(StatusCode::BAD_REQUEST)
+        .body(Body::from(message.into().to_string()))
+        .unwrap()
+}
+
 pub async fn handler(mut request: Request<Body>, pool: Pool<Sqlite>) -> Response<Body> {
     let uri = request.uri().clone();
     let segments = uri.segments();
 
+    const CHAT_LIST_CLASSES: &str =
+        "sidebar sm:sidebar-disabled sidebar-open-peer-btn focus-within:sidebar-open";
+    const MENU_CLASSES: &str = "p-4 sm:overflow-y-auto sm:min-w-fit rounded-r sm:h-full group";
+
     if segments.is_empty() && request.method() == Method::GET {
         return Response::builder()
             .body(Body::from(document([div()
-                .class("flex gap-4 h-full")
+                .class("flex h-full w-full flex-col sm:flex-row")
                 .child(
                     div()
-                        .class("bg-slate-500 rounded-r h-full p-4 text-white overflow-auto")
-                        .child(
-                            button()
-                                .attr("hx-post", "/create")
-                                .attr("hx-swap", "beforeend")
-                                .attr("hx-target", "#notifications")
-                                .text("Create Chat"),
-                        )
+                        .class(MENU_CLASSES)
                         .child(
                             div()
-                                .id("chats")
-                                .attr("hx-get", "/chats")
-                                .attr("hx-trigger", "reload-chats from:body delay:100ms")
-                                .child(match chats(pool).await {
-                                    Ok(chats) => chats.into(),
-                                    Err(_) => html::text("Failed To Get Chats"),
-                                }),
+                                .class("flex gap-4 items-stretch")
+                                .child(
+                                    button()
+                                        .text("Chats")
+                                        .class("sm:hidden focus-open-peer-sidebar"),
+                                )
+                                .child(
+                                    button()
+                                        .attr("hx-post", "/create")
+                                        .attr("hx-swap", "beforeend")
+                                        .attr("hx-target", "#notifications")
+                                        .text("Create Chat"),
+                                ),
+                        )
+                        .child(div().id("notifications"))
+                        .child(
+                            div().class(CHAT_LIST_CLASSES).child(
+                                div()
+                                    .id("chats")
+                                    .attr("hx-get", "/chats")
+                                    .attr("hx-trigger", "reload-chats from:body delay:100ms")
+                                    .child(match chats(pool).await {
+                                        Ok(chats) => chats,
+                                        Err(_) => html::text("Failed To Get Chats"),
+                                    }),
+                            ),
                         ),
                 )
-                .child(div().id("chat").class("grow"))
-                .child(div().id("notifications"))])))
+                .child(
+                    div()
+                        .id("chat")
+                        .class("grow min-h-0 p-4")
+                        .child(div().class("rounded-2xl bg-white h-full")),
+                )])))
             .unwrap();
     }
 
@@ -96,7 +131,7 @@ pub async fn handler(mut request: Request<Body>, pool: Pool<Sqlite>) -> Response
 
         return Response::builder()
             .body(Body::from(match chats(pool).await {
-                Ok(chats) => chats.into().to_string(),
+                Ok(chats) => chats.to_string(),
                 Err(_) => {
                     return internal_server_error(html::text("Failed To Get Chats"));
                 }

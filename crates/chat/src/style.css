@@ -12,6 +12,43 @@
 	}
 
 	body {
-		@apply h-full;
+		@apply h-full bg-slate-200;
 	}
 }
+
+@layer utilities {
+	.shadow-max {
+		box-shadow: 0 0 0 1000vmax theme("colors.black" / 10%), theme("boxShadow.xl");
+	}
+}
+
+@layer components {
+	:where(.sidebar) {
+		@apply top-0 bottom-0 left-0 h-full absolute transition -translate-x-[150%] p-4 px-8 overflow-x-auto bg-slate-200;
+	}
+
+	:where(.sidebar-open:not(.sidebar-disabled)) {
+		@apply translate-x-0 shadow-max; 
+	}
+
+	:where(.sidebar-disabled) {
+		@apply m-0 p-0 relative bg-none translate-x-0 h-fit shadow-none;
+	}
+
+	:where(:has(button.focus-open-peer-sidebar:focus) ~ .sidebar:not(.sidebar-disabled)) {
+		@apply sidebar-open;
+	}
+
+	.btn {
+		@apply bg-orange-500 text-orange-100 font-bold p-2 px-4 rounded-[100vmax] shadow;
+	}
+
+	.btn:hover, .btn:focus {
+		@apply bg-orange-700;
+	}
+
+	button:not(.not-button) {
+		@apply btn;
+	}
+}
+

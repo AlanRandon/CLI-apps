@@ -1,6 +1,6 @@
 import "htmx.org"
 import Alpine from "alpinejs"
-import moment from "moment";
+import { intlFormatDistance } from "date-fns"
 
 declare global {
 	interface Window {
@@ -11,7 +11,9 @@ declare global {
 window.Alpine = Alpine
 
 Alpine.directive("show-time-since", (el, { expression }) => {
-	el.textContent = moment().subtract(+expression, "seconds").fromNow()
+	const seconds = +expression
+	const now = Date.now()
+	el.textContent = intlFormatDistance(now - 1000 * seconds, now)
 })
 
 Alpine.start()

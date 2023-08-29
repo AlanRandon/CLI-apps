@@ -1,19 +1,26 @@
-use super::internal_server_error;
+use crate::handler::{bad_request, internal_server_error};
 use html_builder::prelude::*;
 use http::{Method, Request, Response};
 use hyper::Body;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use uuid::Uuid;
 
-pub async fn messages(pool: &Pool<Sqlite>, chat_id: Uuid) -> Result<impl Into<Node>, sqlx::Error> {
+#[derive(Deserialize, Serialize)]
+pub struct Params {
+    pub id: Uuid,
+}
+
+pub async fn messages(pool: &Pool<Sqlite>, params: Params) -> Result<impl Into<Node>, sqlx::Error> {
+    // TODO: limits?
     let messages = sqlx::query!(
         r#"
             SELECT content, (unixepoch() - unixepoch(creation_time)) as time_since
             FROM chats INNER JOIN messages
             ON chats.id = messages.chat
-            WHERE chats.id = ?"#,
-        chat_id
+            WHERE chats.id = ?
+            ORDER BY creation_time"#,
+        params.id,
     )
     .fetch_all(pool)
     .await?;
@@ -21,13 +28,24 @@ pub async fn messages(pool: &Pool<Sqlite>, chat_id: Uuid) -> Result<impl Into<No
     Ok(ul()
         .class("flex gap-4 flex-col")
         .children(messages.into_iter().map(|message| {
-            li().class("rounded-[100vmax] rounded-bl-none bg-slate-200 p-4 w-fit")
-                .child(pre().class("font-sans").text(message.content))
+            li().class("flex flex-col")
                 .child(
                     div()
-                        .class("text-sm")
-                        .attr("x-show-time-since", message.time_since.unwrap_or(0)),
+                        .class("p-4 bg-slate-200 rounded-t flex flex-col")
+                        .child(
+                            pre()
+                                .class("font-sans break-all hyphens-auto whitespace-pre-wrap")
+                                .text(message.content),
+                        )
+                        .child(
+                            div()
+                                .class("text-xs text-black/80 min-w-[15ch] text-right")
+                                .attr("x-show-time-since", message.time_since.unwrap_or(0)),
+                        ),
                 )
+                .child(div().class(
+                    "border-transparent border-t-slate-200 border-8 border-b-0 h-0 w-0 box-content",
+                ))
         })))
 }
 
@@ -44,24 +62,15 @@ pub async fn handler(
         return None;
     }
 
-    #[derive(Deserialize)]
-    struct Params {
-        id: String,
-    }
-
     let Some(query) = request.uri().query() else {
-        return Some(internal_server_error(html::text("Missing Parameters")));
+        return Some(bad_request(html::text("Request Body Was Malformed")));
     };
 
     let Ok(body) = serde_urlencoded::from_str::<Params>(query) else {
-        return Some(internal_server_error(html::text("Query Was Malformed")));
+        return Some(bad_request(html::text("Request Body Was Malformed")));
     };
 
-    let Ok(id) = body.id.parse::<Uuid>() else {
-        return Some(internal_server_error(html::text("Failed To Parse Chat ID")));
-    };
-
-    let Ok(response) = messages(pool, id).await else {
+    let Ok(response) = messages(pool, body).await else {
         return Some(internal_server_error(html::text("Failed To Get Messages")));
     };
 

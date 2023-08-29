@@ -6,53 +6,100 @@ use itertools::Itertools;
 use sqlx::{Pool, Sqlite};
 use uuid::Uuid;
 
+mod delete;
 mod messages;
+mod rename;
 mod send;
 
 async fn chat(pool: &Pool<Sqlite>, id: Uuid) -> Result<impl Into<Node>, sqlx::Error> {
+    let name = match sqlx::query!("SELECT name FROM chats WHERE id = ?", id)
+        .fetch_one(pool)
+        .await
+    {
+        Ok(record) => record.name,
+        Err(_) => return Ok(html::text("Failed To Load Chat")),
+    };
+
     Ok(div()
-        .class("h-full flex flex-col")
+        .class("flex flex-col h-full gap-4")
         .child(
             div()
-                .class("flex flex-col-reverse grow overflow-auto")
                 .child(
-                    div()
-                        .id("messages")
-                        .attr("hx-get", format!("/messages?id={id}"))
-                        .attr("hx-trigger", "reload-messages from:body, every 10s")
-                        .child(match messages::messages(pool, id).await {
-                            Ok(messages) => messages.into(),
-                            Err(_) => html::text("Failed To Get Messages"),
-                        }),
+                    input()
+                        .attr("value", name)
+                        .attr("hx-post", "/rename")
+                        .attr("hx-vals", format!(r#"{{"id":"{id}"}}"#))
+                        .attr("hx-trigger", "input delay:500ms")
+                        .attr("hx-swap", "beforeend")
+                        .attr("hx-target", "#notifications")
+                        .attr("hx-include", "this")
+                        .attr("name", "name")
+                        .class("bg-transparent"),
+                )
+                .child(
+                    button()
+                        .attr("hx-delete", "/delete")
+                        .attr("hx-vals", format!(r#"{{"id":"{id}"}}"#))
+                        .attr("hx-target", "#chat")
+                        .text("Delete"),
                 ),
         )
         .child(
-            form()
-                .class("flex")
-                .attr("hx-post", "/send")
-                .attr("hx-swap", "beforeend")
-                .attr("hx-target", "#notifications")
-                .attr("hx-on:submit", "this.querySelector('textarea').value = ''")
-                .id("send-message")
+            div()
+                .class("bg-white rounded-2xl flex flex-col grow min-h-0")
                 .child(
-                    textarea()
-                        .attr(
-                            "hx-on:keyup",
-                            "if (event.keyCode == 13 && !event.shiftKey) { this.parentElement.querySelector('input[type=submit]').click() }",
+                    div()
+                        .class("flex flex-col-reverse overflow-y-auto grow min-h-0 p-4")
+                        .child(
+                            div()
+                                .id("messages")
+                                .class("w-full")
+                                .attr("hx-get", format!("/messages?id={id}"))
+                                .attr("hx-trigger", "reload-messages from:body, every 10s")
+                                .child(
+                                    match messages::messages(pool, messages::Params { id }).await {
+                                        Ok(messages) => messages.into(),
+                                        Err(_) => html::text("Failed To Get Messages"),
+                                    },
+                                ),
+                        ),
+                )
+                .child(
+                    form()
+                        .class("flex gap-2 p-4")
+                        .attr("hx-post", "/send")
+                        .attr("hx-swap", "beforeend")
+                        .attr("hx-target", "#notifications")
+                        .attr("hx-on:submit", "this.querySelector('textarea').value = ''")
+                        .id("send-message")
+                        .child(
+                            textarea()
+                                .attr(
+                                    "hx-on:keyup",
+                                    "if (event.keyCode == 13 && !event.shiftKey) { this.parentElement.querySelector('input[type=submit]').click() }"
+                                )
+                                .class(
+                                    "block p-2 h-[1.5em] box-content bg-white rounded-lg border border-slate-300 resize-none grow focus:shadow",
+                                )
+                                .id("content")
+                                .attr("name", "content")
+                                .attr("placeholder", "Your Message..."),
                         )
-                        .class("resize-none grow")
-                        .id("content")
-                        .attr("name", "content")
-                        .attr("placeholder", "message"),
-                )
-                .child(
-                    input()
-                        .attr("type", "hidden")
-                        .attr("value", id)
-                        .attr("name", "id"),
-                )
-                .child(input().attr("type", "submit").attr("value", "Send")),
-        ))
+                        .child(
+                            input()
+                                .attr("type", "hidden")
+                                .attr("value", id)
+                                .attr("name", "id"),
+                        )
+                        .child(
+                            input()
+                                .class("btn")
+                                .attr("type", "submit")
+                                .attr("value", "Send"),
+                        ),
+                ),
+        )
+        .into())
 }
 
 pub async fn handler(
@@ -61,6 +108,14 @@ pub async fn handler(
     segments: &[&str],
 ) -> Option<Response<Body>> {
     if let Some(response) = messages::handler(pool, request, segments).await {
+        return Some(response);
+    };
+
+    if let Some(response) = rename::handler(pool, request, segments).await {
+        return Some(response);
+    };
+
+    if let Some(response) = delete::handler(pool, request, segments).await {
         return Some(response);
     };
 
