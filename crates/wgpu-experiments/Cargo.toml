@@ -1,0 +1,17 @@
+[package]
+name = "wgpu-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wgpu.workspace = true
+winit.workspace = true
+env_logger.workspace = true
+log.workspace = true
+futures-lite.workspace = true
+bytemuck = { version = "1.14", features = ["derive"] }
+khronos-egl = { version = "6.0", features = ["static"], optional = true }
+
+[features]
+default = ["egl"]
+egl = ["dep:khronos-egl"]
