@@ -1,17 +1,13 @@
 use futures_lite::future::block_on;
-use std::any::TypeId;
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::ops::Range;
+use std::pin::Pin;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
 pub struct Window<'a> {
-    surface: wgpu::Surface,
-    surface_configuration: wgpu::SurfaceConfiguration,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    pipelines: HashMap<TypeId, Arc<wgpu::RenderPipeline>>,
+    pub renderer: Renderer,
     pub size: winit::dpi::PhysicalSize<u32>,
     pub window: &'a winit::window::Window,
 }
@@ -27,6 +23,39 @@ impl<'a> Window<'a> {
 
         let surface = unsafe { instance.create_surface(&window) }.unwrap();
 
+        Self {
+            renderer: Renderer::new(&instance, surface, size),
+            size,
+            window,
+        }
+    }
+
+    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        if new_size.width > 0 && new_size.height > 0 {
+            self.size = new_size;
+            self.renderer.surface_configuration.width = new_size.width;
+            self.renderer.surface_configuration.height = new_size.height;
+            self.renderer
+                .surface
+                .configure(&self.renderer.device, &self.renderer.surface_configuration);
+        }
+    }
+}
+
+pub struct Renderer {
+    surface: wgpu::Surface,
+    surface_configuration: wgpu::SurfaceConfiguration,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    pipelines: HashMap<TypeId, Arc<wgpu::RenderPipeline>>,
+}
+
+impl Renderer {
+    pub fn new(
+        instance: &wgpu::Instance,
+        surface: wgpu::Surface,
+        size: winit::dpi::PhysicalSize<u32>,
+    ) -> Self {
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::default(),
             compatible_surface: Some(&surface),
@@ -67,31 +96,23 @@ impl<'a> Window<'a> {
             surface,
             surface_configuration,
             pipelines: HashMap::new(),
-            size,
             device,
             queue,
-            window,
         }
     }
 
-    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        if new_size.width > 0 && new_size.height > 0 {
-            self.size = new_size;
-            self.surface_configuration.width = new_size.width;
-            self.surface_configuration.height = new_size.height;
-            self.surface
-                .configure(&self.device, &self.surface_configuration);
-        }
+    pub fn get_pipeline<T: Pipeline>(&mut self) -> &Arc<wgpu::RenderPipeline> {
+        let pipeline = self
+            .pipelines
+            .entry(Any::type_id(&PhantomData::<Self>))
+            .or_insert_with(|| {
+                Arc::new(T::create(&self.device, self.surface_configuration.format))
+            });
+
+        pipeline
     }
 
-    pub fn get_pipeline<T: Pipeline + 'static>(&mut self) -> Arc<wgpu::RenderPipeline> {
-        let pipeline = self.pipelines.entry(TypeId::of::<T>()).or_insert_with(|| {
-            Arc::new(T::create(&self.device, self.surface_configuration.format))
-        });
-        Arc::clone(pipeline)
-    }
-
-    pub fn create_vertex_buffer<T: Pipeline>(&self, vertices: &'a [T::Vertex]) -> VertexBuffer<T> {
+    pub fn create_vertex_buffer<T: Vertex>(&self, vertices: &[T]) -> VertexBuffer<T> {
         let buffer = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -103,11 +124,10 @@ impl<'a> Window<'a> {
         VertexBuffer {
             buffer,
             vertices: vertices.to_vec(),
-            _phantom: PhantomData,
         }
     }
 
-    pub fn create_index_buffer<T: Pipeline>(&self, indices: &'a [u16]) -> IndexBuffer<T> {
+    pub fn create_index_buffer(&self, indices: &[u16]) -> IndexBuffer {
         let buffer = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -119,13 +139,12 @@ impl<'a> Window<'a> {
         IndexBuffer {
             buffer,
             indices: indices.to_vec(),
-            _phantom: PhantomData,
         }
     }
 
     pub fn update_index_buffer<T: Pipeline, U>(
         &mut self,
-        index_buffer: &mut IndexBuffer<T>,
+        index_buffer: &mut IndexBuffer,
         indices: U,
     ) where
         Vec<u16>: From<U>,
@@ -138,12 +157,12 @@ impl<'a> Window<'a> {
         );
     }
 
-    pub fn update_vertex_buffer<T: Pipeline, U>(
+    pub fn update_vertex_buffer<T: Vertex, U>(
         &mut self,
         vertex_buffer: &mut VertexBuffer<T>,
         vertices: U,
     ) where
-        Vec<T::Vertex>: From<U>,
+        Vec<T>: From<U>,
     {
         vertex_buffer.vertices = vertices.into();
         self.queue.write_buffer(
@@ -153,88 +172,128 @@ impl<'a> Window<'a> {
         );
     }
 
-    pub fn render(
-        &self,
-        render: impl FnOnce(&wgpu::TextureView, &mut wgpu::CommandEncoder),
-    ) -> Result<(), wgpu::SurfaceError> {
+    pub fn encoder(&mut self) -> Result<Encoder, wgpu::SurfaceError> {
         let surface_texture = self.surface.get_current_texture()?;
         let view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self
+        let encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-        render(&view, &mut encoder);
+        Ok(Encoder {
+            encoder: Some(encoder),
+            view: Arc::new(view),
+            renderer: self,
+            surface_texture: Some(surface_texture),
+        })
+    }
 
-        self.queue.submit([encoder.finish()]);
-        surface_texture.present();
+    pub fn with_encoder(&mut self, f: impl FnOnce(Encoder)) -> Result<(), wgpu::SurfaceError> {
+        f(self.encoder()?);
         Ok(())
     }
 }
 
-pub struct VertexBuffer<T: Pipeline> {
-    buffer: wgpu::Buffer,
-    vertices: Vec<T::Vertex>,
+pub trait Pipeline {
+    fn create(device: &wgpu::Device, format: wgpu::TextureFormat) -> wgpu::RenderPipeline;
+}
+
+pub trait Vertex: bytemuck::Pod {
+    type Pipeline: Pipeline;
+
+    fn buffer_layout() -> wgpu::VertexBufferLayout<'static>;
+}
+
+pub struct Encoder<'a> {
+    encoder: Option<wgpu::CommandEncoder>,
+    surface_texture: Option<wgpu::SurfaceTexture>,
+    view: Arc<wgpu::TextureView>,
+    renderer: &'a mut Renderer,
+}
+
+impl<'a> Drop for Encoder<'a> {
+    fn drop(&mut self) {
+        self.renderer
+            .queue
+            .submit([self.encoder.take().unwrap().finish()]);
+
+        self.surface_texture.take().unwrap().present();
+    }
+}
+
+impl<'a> Encoder<'a> {
+    pub fn view(&self) -> Arc<wgpu::TextureView> {
+        Arc::clone(&self.view)
+    }
+
+    pub fn render_pass<'b>(
+        &'b mut self,
+        desc: &wgpu::RenderPassDescriptor<'b, '_>,
+    ) -> RenderPass<()> {
+        let encoder = self.encoder.as_mut().unwrap();
+        RenderPass {
+            render_pass: encoder.begin_render_pass(desc),
+            renderer: self.renderer,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+pub struct RenderPass<'a, T> {
+    render_pass: wgpu::RenderPass<'a>,
+    renderer: &'a mut Renderer,
     _phantom: PhantomData<T>,
 }
 
-impl<T: Pipeline> VertexBuffer<T> {
-    pub fn vertices(&self) -> &[T::Vertex] {
+impl<'a, T> RenderPass<'a, T> {
+    pub fn step<P: Pipeline>(mut self) -> RenderPass<'a, P> {
+        let pipeline = Arc::as_ptr(self.renderer.get_pipeline::<P>());
+        self.render_pass.set_pipeline(unsafe { &*pipeline });
+
+        RenderPass {
+            render_pass: self.render_pass,
+            renderer: self.renderer,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a, T: Pipeline> RenderPass<'a, T> {
+    pub fn draw_buffers<V: Vertex<Pipeline = T>>(
+        &mut self,
+        vertex_buffer: &'a VertexBuffer<V>,
+        index_buffer: &'a IndexBuffer,
+    ) {
+        self.render_pass
+            .set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
+        self.render_pass
+            .set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint16);
+        #[allow(clippy::cast_possible_truncation)]
+        self.render_pass
+            .draw_indexed(0..index_buffer.indices.len() as u32, 0, 0..1);
+    }
+}
+
+pub struct VertexBuffer<T: Vertex> {
+    buffer: wgpu::Buffer,
+    vertices: Vec<T>,
+}
+
+impl<T: Vertex> VertexBuffer<T> {
+    pub fn vertices(&self) -> &[T] {
         self.vertices.as_ref()
     }
 }
 
-pub struct IndexBuffer<T: Pipeline> {
+pub struct IndexBuffer {
     buffer: wgpu::Buffer,
     indices: Vec<u16>,
-    _phantom: PhantomData<T>,
 }
 
-impl<T: Pipeline> IndexBuffer<T> {
+impl IndexBuffer {
     pub fn indices(&self) -> &[u16] {
         self.indices.as_ref()
-    }
-}
-
-pub trait Pipeline {
-    type Vertex: VertexBufferLayout + bytemuck::Pod;
-
-    fn create(device: &wgpu::Device, format: wgpu::TextureFormat) -> wgpu::RenderPipeline;
-}
-
-pub trait VertexBufferLayout {
-    fn buffer_layout() -> wgpu::VertexBufferLayout<'static>;
-}
-
-pub trait RenderPassExt<'a> {
-    fn draw_buffers_instanced<T: Pipeline>(
-        &mut self,
-        vertex_buffer: &'a VertexBuffer<T>,
-        index_buffer: &'a IndexBuffer<T>,
-        instances: Range<u32>,
-    );
-
-    fn draw_buffers<T: Pipeline>(
-        &mut self,
-        vertex_buffer: &'a VertexBuffer<T>,
-        index_buffer: &'a IndexBuffer<T>,
-    ) {
-        self.draw_buffers_instanced(vertex_buffer, index_buffer, 0..1);
-    }
-}
-
-impl<'a> RenderPassExt<'a> for wgpu::RenderPass<'a> {
-    fn draw_buffers_instanced<T: Pipeline>(
-        &mut self,
-        vertex_buffer: &'a VertexBuffer<T>,
-        index_buffer: &'a IndexBuffer<T>,
-        instances: Range<u32>,
-    ) {
-        self.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
-        self.set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint16);
-        #[allow(clippy::cast_possible_truncation)]
-        self.draw_indexed(0..index_buffer.indices.len() as u32, 0, instances);
     }
 }
