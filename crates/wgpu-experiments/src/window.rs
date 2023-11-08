@@ -1,8 +1,8 @@
 use futures_lite::future::block_on;
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::pin::Pin;
+use std::ops::Range;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
@@ -42,12 +42,25 @@ impl<'a> Window<'a> {
     }
 }
 
+pub struct PipelineData {
+    pipeline: wgpu::RenderPipeline,
+}
+
+impl PipelineData {
+    pub fn new(device: &wgpu::Device, desc: &wgpu::RenderPipelineDescriptor) -> Self {
+        Self {
+            pipeline: device.create_render_pipeline(desc),
+        }
+    }
+}
+
 pub struct Renderer {
     surface: wgpu::Surface,
     surface_configuration: wgpu::SurfaceConfiguration,
-    device: wgpu::Device,
+    pub device: wgpu::Device,
     queue: wgpu::Queue,
-    pipelines: HashMap<TypeId, Arc<wgpu::RenderPipeline>>,
+    pipelines: HashMap<TypeId, Arc<PipelineData>>,
+    bind_group_layouts: HashMap<TypeId, Arc<wgpu::BindGroupLayout>>,
 }
 
 impl Renderer {
@@ -95,29 +108,65 @@ impl Renderer {
         Self {
             surface,
             surface_configuration,
-            pipelines: HashMap::new(),
             device,
             queue,
+            pipelines: HashMap::new(),
+            bind_group_layouts: HashMap::new(),
         }
     }
 
-    pub fn get_pipeline<T: Pipeline>(&mut self) -> &Arc<wgpu::RenderPipeline> {
-        let pipeline = self
-            .pipelines
-            .entry(Any::type_id(&PhantomData::<Self>))
-            .or_insert_with(|| {
-                Arc::new(T::create(&self.device, self.surface_configuration.format))
-            });
-
-        pipeline
+    pub fn get_pipeline<T: Pipeline + 'static>(&mut self) -> &Arc<PipelineData> {
+        self.pipelines.entry(TypeId::of::<T>()).or_insert_with(|| {
+            let pipeline = T::create(&self.device, self.surface_configuration.format);
+            Arc::new(pipeline)
+        })
     }
 
-    pub fn create_vertex_buffer<T: Vertex>(&self, vertices: &[T]) -> VertexBuffer<T> {
+    pub fn get_bind_group_layout<B: BindGroupLayout + 'static>(
+        &mut self,
+    ) -> &Arc<wgpu::BindGroupLayout>
+    where
+        [(); B::ENTRIES]: Sized,
+    {
+        self.bind_group_layouts
+            .entry(TypeId::of::<B>())
+            .or_insert_with(|| {
+                let layout =
+                    self.device
+                        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                            label: None,
+                            entries: &B::layout_entries(),
+                        });
+                Arc::new(layout)
+            })
+    }
+
+    pub fn create_bind_group<T: BindGroupLayout + 'static>(
+        &mut self,
+        entries: [wgpu::BindGroupEntry; T::ENTRIES],
+    ) -> BindGroup<T>
+    where
+        T::Pipeline: 'static,
+    {
+        let layout = Arc::clone(self.get_bind_group_layout::<T>());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &layout,
+            entries: &entries,
+        });
+
+        BindGroup {
+            bind_group,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn create_vertex_buffer<T: VertexLayout>(&self, vertices: &[T]) -> VertexBuffer<T> {
         let buffer = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
-                contents: bytemuck::cast_slice(&vertices),
+                contents: bytemuck::cast_slice(vertices),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
 
@@ -132,7 +181,7 @@ impl Renderer {
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
-                contents: bytemuck::cast_slice(&indices),
+                contents: bytemuck::cast_slice(indices),
                 usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             });
 
@@ -157,7 +206,7 @@ impl Renderer {
         );
     }
 
-    pub fn update_vertex_buffer<T: Vertex, U>(
+    pub fn update_vertex_buffer<T: VertexLayout, U>(
         &mut self,
         vertex_buffer: &mut VertexBuffer<T>,
         vertices: U,
@@ -197,13 +246,41 @@ impl Renderer {
 }
 
 pub trait Pipeline {
-    fn create(device: &wgpu::Device, format: wgpu::TextureFormat) -> wgpu::RenderPipeline;
+    fn create(device: &wgpu::Device, format: wgpu::TextureFormat) -> PipelineData;
 }
 
-pub trait Vertex: bytemuck::Pod {
+pub trait BindGroupLayout {
+    type Pipeline: Pipeline;
+    const ENTRIES: usize;
+
+    fn layout_entries() -> [wgpu::BindGroupLayoutEntry; Self::ENTRIES];
+
+    fn layout(device: &wgpu::Device) -> wgpu::BindGroupLayout
+    where
+        [(); Self::ENTRIES]: Sized,
+    {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &Self::layout_entries(),
+        })
+    }
+}
+
+pub struct BindGroup<T: BindGroupLayout + ?Sized> {
+    bind_group: wgpu::BindGroup,
+    _phantom: PhantomData<T>,
+}
+
+impl<T: BindGroupLayout + ?Sized> AsRef<wgpu::BindGroup> for BindGroup<T> {
+    fn as_ref(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
+}
+
+pub trait VertexLayout: bytemuck::Pod {
     type Pipeline: Pipeline;
 
-    fn buffer_layout() -> wgpu::VertexBufferLayout<'static>;
+    fn layout() -> wgpu::VertexBufferLayout<'static>;
 }
 
 pub struct Encoder<'a> {
@@ -242,15 +319,19 @@ impl<'a> Encoder<'a> {
 }
 
 pub struct RenderPass<'a, T> {
-    render_pass: wgpu::RenderPass<'a>,
+    pub render_pass: wgpu::RenderPass<'a>,
     renderer: &'a mut Renderer,
     _phantom: PhantomData<T>,
 }
 
 impl<'a, T> RenderPass<'a, T> {
-    pub fn step<P: Pipeline>(mut self) -> RenderPass<'a, P> {
-        let pipeline = Arc::as_ptr(self.renderer.get_pipeline::<P>());
-        self.render_pass.set_pipeline(unsafe { &*pipeline });
+    pub fn step<P: Pipeline + 'static>(mut self) -> RenderPass<'a, P> {
+        let pipeline = self.renderer.get_pipeline::<P>();
+        {
+            let pipeline = Arc::as_ptr(pipeline);
+            self.render_pass
+                .set_pipeline(&unsafe { &*pipeline }.pipeline);
+        }
 
         RenderPass {
             render_pass: self.render_pass,
@@ -261,7 +342,15 @@ impl<'a, T> RenderPass<'a, T> {
 }
 
 impl<'a, T: Pipeline> RenderPass<'a, T> {
-    pub fn draw_buffers<V: Vertex<Pipeline = T>>(
+    pub fn draw<V: VertexLayout<Pipeline = T>>(&mut self, vertex_buffer: &'a VertexBuffer<V>) {
+        self.render_pass
+            .set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
+        #[allow(clippy::cast_possible_truncation)]
+        self.render_pass
+            .draw(0..vertex_buffer.vertices.len() as u32, 0..1);
+    }
+
+    pub fn draw_indexed<V: VertexLayout<Pipeline = T>>(
         &mut self,
         vertex_buffer: &'a VertexBuffer<V>,
         index_buffer: &'a IndexBuffer,
@@ -274,14 +363,29 @@ impl<'a, T: Pipeline> RenderPass<'a, T> {
         self.render_pass
             .draw_indexed(0..index_buffer.indices.len() as u32, 0, 0..1);
     }
+
+    pub fn draw_instanced<V: VertexLayout<Pipeline = T>>(
+        &mut self,
+        vertex_buffer: &'a VertexBuffer<V>,
+        index_buffer: &'a IndexBuffer,
+        instances: Range<u32>,
+    ) {
+        self.render_pass
+            .set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
+        self.render_pass
+            .set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint16);
+        #[allow(clippy::cast_possible_truncation)]
+        self.render_pass
+            .draw_indexed(0..index_buffer.indices.len() as u32, 0, instances);
+    }
 }
 
-pub struct VertexBuffer<T: Vertex> {
+pub struct VertexBuffer<T: VertexLayout> {
     buffer: wgpu::Buffer,
     vertices: Vec<T>,
 }
 
-impl<T: Vertex> VertexBuffer<T> {
+impl<T: VertexLayout> VertexBuffer<T> {
     pub fn vertices(&self) -> &[T] {
         self.vertices.as_ref()
     }
