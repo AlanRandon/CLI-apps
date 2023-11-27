@@ -96,7 +96,8 @@ impl VertexLayout for GridLineVertex {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct GridGlobals {
-    size: [f32; 2],
+    grid_size: [f32; 2],
+    window_size: [f32; 2],
 }
 
 impl BindGroupLayout for GridGlobals {
@@ -117,20 +118,32 @@ impl BindGroupLayout for GridGlobals {
     }
 }
 
+const GRID_SIZE: f32 = 3.;
+
 impl GridGlobals {
-    fn create(renderer: &mut Renderer) -> BindGroup<Self> {
-        let buffer = renderer
+    fn create(window: &mut Window) -> BindGroup<Self> {
+        let globals = GridGlobals {
+            grid_size: [GRID_SIZE, GRID_SIZE],
+            window_size: [window.size.width as f32, window.size.height as f32],
+        };
+
+        dbg!(&globals);
+
+        let buffer = window
+            .renderer
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
-                contents: bytemuck::cast_slice(&[GridGlobals { size: [10.0, 10.0] }]),
+                contents: bytemuck::cast_slice(&[globals]),
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
 
-        renderer.create_bind_group::<GridGlobals>([wgpu::BindGroupEntry {
-            binding: 0,
-            resource: buffer.as_entire_binding(),
-        }])
+        window
+            .renderer
+            .create_bind_group::<GridGlobals>([wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            }])
     }
 }
 
@@ -144,20 +157,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window_id = window.id();
     let mut window = Window::new(&window);
 
-    let globals = GridGlobals::create(&mut window.renderer);
+    let mut globals = GridGlobals::create(&mut window);
 
     let vertex_buffer = window.renderer.create_vertex_buffer(
         &(0..20)
             .map(|i| {
-                let x = ((i / 2) % 10) as f32;
-                let y = if i % 2 == 0 { -10. } else { 10. };
+                let x = (i / 2) as f32 % GRID_SIZE;
+                let y = if i % 2 == 0 { 0. } else { GRID_SIZE };
                 GridLineVertex { position: [x, y] }
             })
             .chain((0..20).map(|i| {
-                let y = ((i / 2) % 10) as f32;
-                let x = if i % 2 == 0 { -10. } else { 10. };
+                let y = (i / 2) as f32 % GRID_SIZE;
+                let x = if i % 2 == 0 { 0. } else { GRID_SIZE };
                 GridLineVertex { position: [x, y] }
             }))
+            .chain([
+                GridLineVertex { position: [3., 3.] },
+                GridLineVertex { position: [0., 0.] },
+            ])
             .collect::<Vec<_>>(),
     );
 
@@ -176,7 +193,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 _ => {}
             },
             WindowEvent::CloseRequested => elwt.exit(),
-            WindowEvent::Resized(size) => window.resize(size),
+            WindowEvent::Resized(size) => {
+                window.resize(size);
+                globals = GridGlobals::create(&mut window);
+            }
             WindowEvent::RedrawRequested => {
                 let result = window.renderer.with_encoder(|mut encoder| {
                     let view = encoder.view();
