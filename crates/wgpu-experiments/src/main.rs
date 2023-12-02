@@ -1,149 +1,71 @@
 #![warn(clippy::pedantic)]
-#![feature(generic_const_exprs)]
 
-use wgpu::util::DeviceExt;
-use window::{
-    BindGroup, BindGroupLayout, Pipeline, PipelineData, Renderer, VertexBuffer, VertexLayout,
-    Window,
-};
+use image::RgbaImage;
+use pipeline::Vertex;
+use renderer::texture::Texture;
+use renderer::{bind_group, buffer, Renderer, Window};
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{Key, NamedKey};
 use winit::window::WindowBuilder;
 
-mod window;
+mod pipeline;
+mod renderer;
 
 #[cfg(feature = "egl")]
 #[link(name = "EGL")]
 #[link(name = "GLESv2")]
 extern "C" {}
 
-struct GridPipeline;
-
-impl Pipeline for GridPipeline {
-    fn create(device: &wgpu::Device, format: wgpu::TextureFormat) -> PipelineData {
-        let shader = device.create_shader_module(wgpu::include_wgsl!("grid.wgsl"));
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[&GridGlobals::layout(device)],
-            push_constant_ranges: &[],
-        });
-
-        PipelineData::new(
-            device,
-            &wgpu::RenderPipelineDescriptor {
-                label: None,
-                layout: Some(&layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: "vs_main",
-                    buffers: &[GridLineVertex::layout()],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: "fs_main",
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::LineList,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(wgpu::Face::Back),
-                    unclipped_depth: false,
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    conservative: false,
-                },
-                multisample: wgpu::MultisampleState {
-                    count: 1,
-                    mask: !0,
-                    alpha_to_coverage_enabled: false,
-                },
-                multiview: None,
-                depth_stencil: None,
-            },
-        )
-    }
-}
-
+#[derive(Debug, bytemuck::Pod, bytemuck::Zeroable, Clone, Copy)]
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct GridLineVertex {
-    position: [f32; 2],
-}
-
-impl GridLineVertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x2];
-}
-
-impl VertexLayout for GridLineVertex {
-    type Pipeline = GridPipeline;
-
-    fn layout() -> wgpu::VertexBufferLayout<'static> {
-        use std::mem;
-
-        wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBS,
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct GridGlobals {
-    grid_size: [f32; 2],
+struct Globals {
+    size: [f32; 2],
     window_size: [f32; 2],
 }
 
-impl BindGroupLayout for GridGlobals {
-    type Pipeline = GridPipeline;
-    const ENTRIES: usize = 1;
-
-    fn layout_entries() -> [wgpu::BindGroupLayoutEntry; Self::ENTRIES] {
-        [wgpu::BindGroupLayoutEntry {
-            binding: 0,
-            visibility: wgpu::ShaderStages::VERTEX,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        }]
-    }
+struct Step {
+    x: f32,
+    y: f32,
 }
 
-const GRID_SIZE: f32 = 3.;
+impl Step {
+    const WIDTH: f32 = 0.1;
 
-impl GridGlobals {
-    fn create(window: &mut Window) -> BindGroup<Self> {
-        let globals = GridGlobals {
-            grid_size: [GRID_SIZE, GRID_SIZE],
-            window_size: [window.size.width as f32, window.size.height as f32],
-        };
+    fn get_buffers(
+        &self,
+        texture: &Texture,
+        device: &wgpu::Device,
+    ) -> (buffer::Vertex<Vertex>, buffer::Index) {
+        let texture: &RgbaImage = texture.as_ref();
+        let (width, height) = texture.dimensions();
+        let half_width = Self::WIDTH / 2.;
+        let half_height = half_width * height as f32 / width as f32;
 
-        dbg!(&globals);
-
-        let buffer = window
-            .renderer
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::cast_slice(&[globals]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            });
-
-        window
-            .renderer
-            .create_bind_group::<GridGlobals>([wgpu::BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }])
+        (
+            buffer::Vertex::create(
+                device,
+                dbg!(&[
+                    Vertex {
+                        position: [self.x - half_width, self.y - half_height],
+                        tex_coords: [0., 1.],
+                    },
+                    Vertex {
+                        position: [self.x + half_width, self.y - half_height],
+                        tex_coords: [1., 1.],
+                    },
+                    Vertex {
+                        position: [self.x + half_width, self.y + half_height],
+                        tex_coords: [1., 0.],
+                    },
+                    Vertex {
+                        position: [self.x - half_width, self.y + half_height],
+                        tex_coords: [0., 0.],
+                    },
+                ]),
+            ),
+            buffer::Index::create(device, &[0, 1, 2, 0, 2, 3]),
+        )
     }
 }
 
@@ -155,28 +77,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_title("WGPU fun")
         .build(&event_loop)?;
     let window_id = window.id();
-    let mut window = Window::new(&window);
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::all(),
+        ..Default::default()
+    });
+    let (mut window, device, queue) = Window::new(&instance, &window);
 
-    let mut globals = GridGlobals::create(&mut window);
-
-    let vertex_buffer = window.renderer.create_vertex_buffer(
-        &(0..20)
-            .map(|i| {
-                let x = (i / 2) as f32 % GRID_SIZE;
-                let y = if i % 2 == 0 { 0. } else { GRID_SIZE };
-                GridLineVertex { position: [x, y] }
-            })
-            .chain((0..20).map(|i| {
-                let y = (i / 2) as f32 % GRID_SIZE;
-                let x = if i % 2 == 0 { 0. } else { GRID_SIZE };
-                GridLineVertex { position: [x, y] }
-            }))
-            .chain([
-                GridLineVertex { position: [3., 3.] },
-                GridLineVertex { position: [0., 0.] },
-            ])
-            .collect::<Vec<_>>(),
+    let mut globals = bind_group::Single::new(
+        &mut window.renderer,
+        Globals {
+            window_size: [window.size.width as f32, window.size.height as f32],
+            size: [1., 1.],
+        },
     );
+
+    let step_texture = Texture::new(
+        &image::load_from_memory(include_bytes!("../assets/step.png")).unwrap(),
+        &mut window.renderer,
+    );
+    let (vertex, index) = Step { x: 0.5, y: 0.5 }.get_buffers(&step_texture, &device);
 
     event_loop.run(move |event, elwt| match event {
         winit::event::Event::WindowEvent {
@@ -194,8 +113,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             WindowEvent::CloseRequested => elwt.exit(),
             WindowEvent::Resized(size) => {
+                globals.update(
+                    &queue,
+                    Globals {
+                        window_size: [size.width as f32, size.height as f32],
+                        size: [1., 1.],
+                    },
+                );
                 window.resize(size);
-                globals = GridGlobals::create(&mut window);
             }
             WindowEvent::RedrawRequested => {
                 let result = window.renderer.with_encoder(|mut encoder| {
@@ -220,13 +145,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             occlusion_query_set: None,
                             timestamp_writes: None,
                         })
-                        .step::<GridPipeline>();
+                        .step::<pipeline::Pipeline>();
 
                     render_pass
                         .render_pass
                         .set_bind_group(0, globals.as_ref(), &[]);
 
-                    render_pass.draw(&vertex_buffer);
+                    render_pass
+                        .render_pass
+                        .set_bind_group(1, step_texture.as_ref(), &[]);
+
+                    render_pass.draw_indexed(&vertex, &index);
                 });
 
                 if let Err(err) = result {
