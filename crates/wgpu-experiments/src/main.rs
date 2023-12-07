@@ -32,39 +32,32 @@ struct Step {
 impl Step {
     const WIDTH: f32 = 0.1;
 
-    fn get_buffers(
-        &self,
-        texture: &Texture,
-        device: &wgpu::Device,
-    ) -> (buffer::Vertex<Vertex>, buffer::Index) {
+    fn get_buffers(&self, texture: &Texture, device: &wgpu::Device) -> ([Vertex; 4], [u16; 6]) {
         let texture: &RgbaImage = texture.as_ref();
         let (width, height) = texture.dimensions();
         let half_width = Self::WIDTH / 2.;
         let half_height = half_width * height as f32 / width as f32;
 
         (
-            buffer::Vertex::create(
-                device,
-                dbg!(&[
-                    Vertex {
-                        position: [self.x - half_width, self.y - half_height],
-                        tex_coords: [0., 1.],
-                    },
-                    Vertex {
-                        position: [self.x + half_width, self.y - half_height],
-                        tex_coords: [1., 1.],
-                    },
-                    Vertex {
-                        position: [self.x + half_width, self.y + half_height],
-                        tex_coords: [1., 0.],
-                    },
-                    Vertex {
-                        position: [self.x - half_width, self.y + half_height],
-                        tex_coords: [0., 0.],
-                    },
-                ]),
-            ),
-            buffer::Index::create(device, &[0, 1, 2, 0, 2, 3]),
+            [
+                Vertex {
+                    position: [self.x - half_width, self.y - half_height],
+                    tex_coords: [0., 1.],
+                },
+                Vertex {
+                    position: [self.x + half_width, self.y - half_height],
+                    tex_coords: [1., 1.],
+                },
+                Vertex {
+                    position: [self.x + half_width, self.y + half_height],
+                    tex_coords: [1., 0.],
+                },
+                Vertex {
+                    position: [self.x - half_width, self.y + half_height],
+                    tex_coords: [0., 0.],
+                },
+            ],
+            [0, 1, 2, 0, 2, 3],
         )
     }
 }
@@ -95,7 +88,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &image::load_from_memory(include_bytes!("../assets/step.png")).unwrap(),
         &mut window.renderer,
     );
-    let (vertex, index) = Step { x: 0.5, y: 0.5 }.get_buffers(&step_texture, &device);
+    let mut step = Step { x: 0.5, y: 0.5 };
+    let (vertices, indices) = step.get_buffers(&step_texture, &device);
+    let (mut vertex, mut index) = (
+        buffer::Vertex::create(device.as_ref(), &vertices),
+        buffer::Index::create(device.as_ref(), &indices),
+    );
 
     event_loop.run(move |event, elwt| match event {
         winit::event::Event::WindowEvent {
@@ -109,6 +107,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ..
             } => match (logical_key, state) {
                 (Key::Named(NamedKey::Escape), ElementState::Pressed) => elwt.exit(),
+                (Key::Named(NamedKey::ArrowLeft), ElementState::Pressed) => step.x -= 0.01,
+                (Key::Named(NamedKey::ArrowRight), ElementState::Pressed) => step.x += 0.01,
                 _ => {}
             },
             WindowEvent::CloseRequested => elwt.exit(),
@@ -123,6 +123,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 window.resize(size);
             }
             WindowEvent::RedrawRequested => {
+                let (vertices, indices) = step.get_buffers(&step_texture, &device);
+                vertex.update(queue.as_ref(), &vertices);
+                index.update(queue.as_ref(), &indices);
+
                 let result = window.renderer.with_encoder(|mut encoder| {
                     let view = encoder.view();
                     let mut render_pass = encoder
