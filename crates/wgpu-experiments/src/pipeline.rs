@@ -1,7 +1,7 @@
 use crate::renderer::bind_group::{self, BindGroupLayout};
 use crate::renderer::texture::Texture;
 use crate::renderer::{self, PipelineData, VertexLayout};
-use crate::Globals;
+use crate::ShaderGlobals;
 
 pub struct Pipeline;
 
@@ -11,7 +11,7 @@ impl renderer::Pipeline for Pipeline {
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: &[
-                &bind_group::Single::<Globals>::layout(device),
+                &bind_group::Single::<ShaderGlobals>::layout(device),
                 &Texture::layout(device),
             ],
             push_constant_ranges: &[],

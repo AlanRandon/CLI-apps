@@ -1,40 +1,45 @@
-use super::VertexLayout;
+use std::marker::PhantomData;
 use wgpu::util::DeviceExt;
 use wgpu::BufferUsages;
 
-pub struct Vertex<T: VertexLayout> {
-    many: Many<T>,
+pub struct Vertex<V, T> {
+    many: Many<V, T>,
 }
 
-impl<T: VertexLayout> Vertex<T> {
-    pub fn vertices(&self) -> &[T] {
-        self.many.data.as_ref()
-    }
-
-    pub fn create(device: &wgpu::Device, indices: &[T]) -> Self {
+impl<V, T> Vertex<V, T> {
+    pub fn create(device: &wgpu::Device, data: T) -> Self
+    where
+        V: bytemuck::Pod,
+        T: ToVertex<V>,
+    {
         Self {
-            many: Many::create(
-                device,
-                indices,
-                BufferUsages::VERTEX | BufferUsages::COPY_DST,
-            ),
+            many: Many::create(device, data, BufferUsages::VERTEX | BufferUsages::COPY_DST),
         }
     }
 
-    pub fn update<U>(&mut self, queue: &wgpu::Queue, indices: U)
+    pub fn update(&self, queue: &wgpu::Queue) -> impl AsRef<[V]> + '_
     where
-        Vec<T>: From<U>,
+        V: bytemuck::Pod,
+        T: ToVertex<V>,
     {
-        self.many.update(queue, indices)
+        self.many.update(queue)
     }
 
     pub fn buffer(&self) -> &wgpu::Buffer {
         self.many.buffer()
     }
+
+    pub fn data_mut(&mut self) -> &mut T {
+        &mut self.many.data
+    }
+
+    pub fn data(&self) -> &T {
+        &self.many.data
+    }
 }
 
 pub struct Index {
-    many: Many<u16>,
+    many: Many<u16, Vec<u16>>,
 }
 
 impl Index {
@@ -44,19 +49,8 @@ impl Index {
 
     pub fn create(device: &wgpu::Device, indices: &[u16]) -> Self {
         Self {
-            many: Many::create(
-                device,
-                indices,
-                BufferUsages::INDEX | BufferUsages::COPY_DST,
-            ),
+            many: Many::create(device, indices.to_vec(), BufferUsages::INDEX),
         }
-    }
-
-    pub fn update<U>(&mut self, queue: &wgpu::Queue, indices: U)
-    where
-        Vec<u16>: From<U>,
-    {
-        self.many.update(queue, indices)
     }
 
     pub fn buffer(&self) -> &wgpu::Buffer {
@@ -80,46 +74,82 @@ impl<T: bytemuck::Pod> Single<T> {
         Self { buffer, data }
     }
 
-    pub fn update(&mut self, queue: &wgpu::Queue, data: T) {
-        self.data = data;
-        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&[data]));
+    pub fn update(&mut self, queue: &wgpu::Queue) {
+        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&[self.data]));
     }
 
     pub fn buffer(&self) -> &wgpu::Buffer {
         &self.buffer
     }
+
+    pub fn data_mut(&mut self) -> &mut T {
+        &mut self.data
+    }
+
+    pub fn data(&self) -> &T {
+        &self.data
+    }
 }
 
-pub struct Many<T: bytemuck::Pod> {
+pub struct Many<V, T> {
     buffer: wgpu::Buffer,
-    data: Vec<T>,
+    data: T,
+    _phantom: PhantomData<V>,
 }
 
-impl<T: bytemuck::Pod> Many<T> {
-    pub fn create<U>(device: &wgpu::Device, data: U, usage: wgpu::BufferUsages) -> Self
+impl<V, T> Many<V, T> {
+    pub fn create(device: &wgpu::Device, data: T, usage: wgpu::BufferUsages) -> Self
     where
-        Vec<T>: From<U>,
+        V: bytemuck::Pod,
+        T: ToVertex<V>,
     {
-        let data = Vec::from(data);
-
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: None,
-            contents: bytemuck::cast_slice(&data),
+            contents: bytemuck::cast_slice(data.to_vertex().as_ref()),
             usage,
         });
 
-        Self { buffer, data }
+        Self {
+            buffer,
+            data,
+            _phantom: PhantomData,
+        }
     }
 
-    pub fn update<U>(&mut self, queue: &wgpu::Queue, data: U)
+    pub fn update(&self, queue: &wgpu::Queue) -> impl AsRef<[V]> + '_
     where
-        Vec<T>: From<U>,
+        V: bytemuck::Pod,
+        T: ToVertex<V>,
     {
-        self.data = data.into();
-        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&self.data));
+        let vertex = self.data.to_vertex();
+        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(vertex.as_ref()));
+        vertex
     }
 
     pub fn buffer(&self) -> &wgpu::Buffer {
         &self.buffer
+    }
+
+    pub fn data_mut(&mut self) -> &mut T {
+        &mut self.data
+    }
+
+    pub fn data(&self) -> &T {
+        &self.data
+    }
+}
+
+pub trait ToVertex<V> {
+    fn to_vertex<'a>(&'a self) -> impl AsRef<[V]>
+    where
+        V: 'a;
+}
+
+impl<V, T: AsRef<[V]>> ToVertex<V> for T {
+    fn to_vertex<'a>(&'a self) -> impl AsRef<[V]>
+    where
+        V: 'a,
+    {
+        self.as_ref()
     }
 }

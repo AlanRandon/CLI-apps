@@ -103,7 +103,15 @@ impl<T: bytemuck::Pod> Single<T> {
         Self { buffer, bind_group }
     }
 
-    pub fn update(&mut self, queue: &wgpu::Queue, item: T) {
-        self.buffer.update(queue, item);
+    pub fn update(&mut self, queue: &wgpu::Queue) {
+        self.buffer.update(queue);
+    }
+
+    pub fn data_mut(&mut self) -> &mut T {
+        self.buffer.data_mut()
+    }
+
+    pub fn data(&self) -> &T {
+        self.buffer.data()
     }
 }

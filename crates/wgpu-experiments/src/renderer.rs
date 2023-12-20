@@ -1,4 +1,4 @@
-use self::buffer::{Index, Vertex};
+use self::buffer::{Index, ToVertex, Vertex};
 use futures_lite::future::block_on;
 use std::any::TypeId;
 use std::collections::HashMap;
@@ -226,19 +226,32 @@ impl<'a, T> RenderPass<'a, T> {
 }
 
 impl<'a, T: Pipeline> RenderPass<'a, T> {
-    pub fn draw<V: VertexLayout<Pipeline = T>>(&mut self, vertex_buffer: &'a Vertex<V>) {
+    pub fn draw<V: VertexLayout<Pipeline = T>, U>(&mut self, vertex_buffer: &'a Vertex<V, U>)
+    where
+        V: bytemuck::Pod,
+        U: ToVertex<V>,
+    {
+        let len = vertex_buffer
+            .update(self.renderer.queue.as_ref())
+            .as_ref()
+            .len();
+
         self.render_pass
             .set_vertex_buffer(0, vertex_buffer.buffer().slice(..));
         #[allow(clippy::cast_possible_truncation)]
-        self.render_pass
-            .draw(0..vertex_buffer.vertices().len() as u32, 0..1);
+        self.render_pass.draw(0..len as u32, 0..1);
     }
 
-    pub fn draw_indexed<V: VertexLayout<Pipeline = T>>(
+    pub fn draw_indexed<V: VertexLayout<Pipeline = T>, U>(
         &mut self,
-        vertex_buffer: &'a Vertex<V>,
+        vertex_buffer: &'a Vertex<V, U>,
         index_buffer: &'a Index,
-    ) {
+    ) where
+        V: bytemuck::Pod,
+        U: ToVertex<V>,
+    {
+        vertex_buffer.update(self.renderer.queue.as_ref());
+
         self.render_pass
             .set_vertex_buffer(0, vertex_buffer.buffer().slice(..));
         self.render_pass
@@ -248,12 +261,17 @@ impl<'a, T: Pipeline> RenderPass<'a, T> {
             .draw_indexed(0..index_buffer.indices().len() as u32, 0, 0..1);
     }
 
-    pub fn draw_instanced<V: VertexLayout<Pipeline = T>>(
+    pub fn draw_instanced<V: VertexLayout<Pipeline = T>, U>(
         &mut self,
-        vertex_buffer: &'a Vertex<V>,
+        vertex_buffer: &'a Vertex<V, U>,
         index_buffer: &'a Index,
         instances: Range<u32>,
-    ) {
+    ) where
+        V: bytemuck::Pod,
+        U: ToVertex<V>,
+    {
+        vertex_buffer.update(self.renderer.queue.as_ref());
+
         self.render_pass
             .set_vertex_buffer(0, vertex_buffer.buffer().slice(..));
         self.render_pass
