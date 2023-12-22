@@ -1,11 +1,12 @@
 #![warn(clippy::pedantic)]
 
-use glam::{vec2, Vec2};
 use image::RgbaImage;
+use nalgebra::{vector, Isometry2, Vector2};
 use pipeline::Vertex;
 use rand::prelude::*;
 use renderer::texture::Texture;
 use renderer::{bind_group, buffer, Encoder, Renderer, Window};
+use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
@@ -30,7 +31,7 @@ struct ShaderGlobals {
 
 #[derive(Clone)]
 struct Step {
-    position: Vec2,
+    position: Vector2<f32>,
     texture: Arc<Texture>,
 }
 
@@ -44,7 +45,8 @@ impl buffer::ToVertex<Vertex> for Step {
         let half_width = Self::WIDTH / 2.;
         let half_height = half_width * height as f32 / width as f32;
 
-        let Vec2 { x, y } = self.position;
+        let x = self.position.x;
+        let y = self.position.y;
 
         [
             Vertex {
@@ -68,11 +70,13 @@ impl buffer::ToVertex<Vertex> for Step {
 }
 
 impl Step {
-    const WIDTH: f32 = 0.1;
+    const WIDTH: f32 = 0.2;
+    const VELOCITY: Vector2<f32> = vector!(0., 0.01);
 }
 
 struct Ball {
-    position: Vec2,
+    position: Vector2<f32>,
+    velocity: Vector2<f32>,
     texture: Texture,
 }
 
@@ -86,7 +90,8 @@ impl buffer::ToVertex<Vertex> for Ball {
         let half_width = Self::WIDTH / 2.;
         let half_height = half_width * height as f32 / width as f32;
 
-        let Vec2 { x, y } = self.position;
+        let x = self.position.x;
+        let y = self.position.y;
 
         [
             Vertex {
@@ -111,6 +116,24 @@ impl buffer::ToVertex<Vertex> for Ball {
 
 impl Ball {
     const WIDTH: f32 = 0.1;
+
+    fn will_intersect(&self, step: &Step) -> bool {
+        let texture: &RgbaImage = step.texture.as_ref().as_ref();
+        let (width, height) = texture.dimensions();
+        let half_width = Step::WIDTH / 2.;
+        let half_height = half_width * height as f32 / width as f32;
+
+        let step_shape = parry2d::shape::Cuboid::new(Vector2::new(half_width, half_height));
+        let ball_shape = parry2d::shape::Ball::new(Self::WIDTH / 2.);
+
+        parry2d::query::intersection_test(
+            &Isometry2::new(step.position + Step::VELOCITY, Default::default()),
+            &step_shape,
+            &Isometry2::new(self.position + self.velocity, Default::default()),
+            &ball_shape,
+        )
+        .unwrap()
+    }
 }
 
 struct Textures {
@@ -169,7 +192,8 @@ impl State {
             ball: buffer::Vertex::create(
                 &renderer.device,
                 Ball {
-                    position: vec2(0.5, 0.5),
+                    position: vector!(0.5, 0.5),
+                    velocity: vector!(0., 0.),
                     texture: ball_texture,
                 },
             ),
@@ -185,7 +209,7 @@ impl State {
                 self.globals.update(queue);
             }
             Event::Tick => {
-                if rand::distributions::Bernoulli::new((self.ticks_since_step - 3.).clamp(0., 1.))
+                if rand::distributions::Bernoulli::new((self.ticks_since_step - 10.).clamp(0., 1.))
                     .unwrap()
                     .sample(&mut thread_rng())
                 {
@@ -194,7 +218,7 @@ impl State {
                     self.steps.push(buffer::Vertex::create(
                         device,
                         Step {
-                            position: vec2(rand::random(), 0.),
+                            position: vector!(rand::random(), 0.),
                             texture: Arc::clone(&self.textures.step),
                         },
                     ));
@@ -202,14 +226,28 @@ impl State {
                     self.ticks_since_step += 1.;
                 }
 
+                let ball = self.ball.data_mut();
+
+                ball.velocity.y -= 0.05;
+                ball.velocity.x = ball.velocity.x.clamp(-0.1, 0.1);
+                ball.velocity.y = ball.velocity.y.clamp(-0.1, 0.1);
+                ball.velocity *= 0.7;
+
                 self.steps.retain_mut(|step| {
-                    let y = &mut step.data_mut().position.y;
-                    *y += 0.01;
-                    *y < 1.
+                    let step = step.data_mut();
+                    if ball.will_intersect(&step) {
+                        ball.velocity.y += 0.15;
+                    }
+                    step.position += Step::VELOCITY;
+                    step.position.y < 1.
                 });
+
+                ball.position += ball.velocity;
+                ball.position.x = ball.position.x.clamp(0., 1.);
+                ball.position.y = ball.position.y.clamp(0., 1.);
             }
-            Event::Left => self.ball.data_mut().position.x -= 0.01,
-            Event::Right => self.ball.data_mut().position.x += 0.01,
+            Event::Left => self.ball.data_mut().velocity.x -= 0.05,
+            Event::Right => self.ball.data_mut().velocity.x += 0.05,
         }
     }
 

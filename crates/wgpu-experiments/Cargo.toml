@@ -13,7 +13,8 @@ rand.workspace = true
 image = { workspace = true, default-features = false, features = ["png"] }
 bytemuck = { version = "1.14", features = ["derive"] }
 khronos-egl = { version = "6.0", features = ["static"], optional = true }
-glam = "0.24"
+nalgebra = "0.32"
+parry2d = "0.13"
 
 [features]
 default = ["egl"]
