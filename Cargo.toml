@@ -19,7 +19,7 @@ winit = { version = "0.29", features = ["rwh_05"] }
 serde = { version = "1", features = ["rc", "derive"] }
 http-serde = "1.1"
 
-http = "0.2"
+http = "1.0"
 reqwest = "0.11"
 hyper = { version = "0.14", features = ["full"] }
 
@@ -36,3 +36,7 @@ num-complex = "0.4"
 
 sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "uuid"] }
 uuid = { version = "1.4", features = ["serde"] }
+
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"
