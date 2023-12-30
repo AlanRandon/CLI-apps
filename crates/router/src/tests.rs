@@ -11,7 +11,7 @@ fn hello(_: &Request<'req>) -> http::Response<String> {
 
 // Dynamic path segments may be bound
 #[get("hello" / name)]
-fn hello_name(_: &Request<'req>, name: &str) -> http::Response<String> {
+async fn hello_name(_: &Request<'req>, name: &str) -> http::Response<String> {
     http::Response::new(format!("Hello {name}!"))
 }
 
@@ -29,14 +29,15 @@ fn add(_: &Request<'req>, a: &str, b: &str) -> http::Response<String> {
         })
 }
 
+router![ApiRouter => add, hello];
+
 // Globs can match all unmatched segments in a path
 // The request recieved has the segments matched, except from those in the glob
 // This allows routers to be nested
 #[get("api" / version / *path)]
 fn api(request: &Request<'req>, version: &str) -> http::Response<String> {
     if version == "v1" {
-        let router = routes![add, hello];
-        router(request).unwrap_or_else(|| not_found(request))
+        ApiRouter::route(request).unwrap_or_else(|| not_found(request))
     } else {
         http::Response::builder()
             .status(http::StatusCode::NOT_FOUND)
@@ -52,9 +53,10 @@ fn not_found(request: &Request) -> http::Response<String> {
         .unwrap()
 }
 
-#[test]
-fn router_works() {
-    let routes = routes![hello, hello_name, api];
+router![async Router => hello, hello_name, api];
+
+#[tokio::test]
+async fn router_works() {
     for (uri, expected_body) in [
         ("/hello", "Hello World!"),
         ("/hello/", "Hello World!"),
@@ -66,7 +68,9 @@ fn router_works() {
         let request = http::Request::builder().uri(uri).body(()).unwrap();
         let request = Request::from_http_with_context(&request, &Context);
 
-        let response = routes(&request).unwrap_or_else(|| not_found(&request));
+        let response = Router::route(&request)
+            .await
+            .unwrap_or_else(|| not_found(&request));
         let body = response.body().as_str();
         assert_eq!(expected_body, body);
     }

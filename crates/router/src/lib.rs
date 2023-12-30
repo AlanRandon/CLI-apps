@@ -70,13 +70,9 @@ impl<'a, T, C> Request<'a, T, C> {
     }
 }
 
-pub trait Route<I, O, C> {
-    fn try_match(request: &Request<I, C>) -> Option<http::Response<O>>;
-}
-
 extern crate self as router;
 
 pub mod prelude {
-    pub use super::{Request, Route};
-    pub use router_macros::{delete, get, head, options, patch, post, put, routes};
+    pub use super::Request;
+    pub use router_macros::{any, delete, get, head, options, patch, post, put, router};
 }

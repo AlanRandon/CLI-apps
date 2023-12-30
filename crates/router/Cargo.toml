@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 http.workspace = true
 router_macros = { path = "../router_macros" }
+
+[dev-dependencies]
+tokio.workspace = true

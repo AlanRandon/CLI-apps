@@ -151,16 +151,50 @@ fn route_attribute(
     let handler_mod_ident = handler.sig.ident.clone();
     let visibility = handler.vis.clone();
 
+    let asyncness = handler.sig.asyncness;
+
     let mut handler = handler.clone();
     handler.vis = Visibility::Public(syn::token::Pub::default());
     handler.sig.generics = parse_quote!(<'req>);
     handler.sig.ident = format_ident!("__{handler_mod_ident}");
     let handler_ident = &handler.sig.ident;
 
-    let handler_request = format_ident!("__{}__Request", handler_mod_ident);
-    let handler_response = format_ident!("__{}__Response", handler_mod_ident);
+    let handler_request = format_ident!("Request__{}", handler_mod_ident);
+    let handler_response = format_ident!("Response__{}", handler_mod_ident);
 
     let matched_segments = segments.segments.len();
+
+    let try_match = if asyncness.is_some() {
+        quote! {
+            pub async fn try_match_async<'req>(
+                req: &'req ::router::Request<'req, RequestBody<'req>, RequestContext<'req>>
+            ) -> Option<::router::http::Response<ResponseBody<'req>>> {
+                #conditions
+
+                let req = req.ignore_segments(#matched_segments);
+                let result = handler(&req, #(#arguments),*).await;
+                Some(result)
+            }
+        }
+    } else {
+        quote! {
+            pub fn try_match<'req>(
+                req: &'req ::router::Request<'req, RequestBody<'req>, RequestContext<'req>>
+            ) -> Option<::router::http::Response<ResponseBody<'req>>> {
+                #conditions
+
+                let req = req.ignore_segments(#matched_segments);
+                let result = handler(&req, #(#arguments),*);
+                Some(result)
+            }
+
+            pub async fn try_match_async<'req>(
+                req: &'req ::router::Request<'req, RequestBody<'req>, RequestContext<'req>>
+            ) -> Option<::router::http::Response<ResponseBody<'req>>> {
+                try_match(req)
+            }
+        }
+    };
 
     quote! {
         #[allow(non_snake_case)]
@@ -172,6 +206,7 @@ fn route_attribute(
         type #handler_request<'req> = #request;
 
         #[allow(non_camel_case_types)]
+
         #[doc(hidden)]
         type #handler_response<'req> = #response;
 
@@ -179,23 +214,13 @@ fn route_attribute(
         #visibility mod #handler_mod_ident {
             pub use super::#handler_ident as handler;
 
-            pub struct Route;
-
             pub type RequestBody<'req> = <super::#handler_request<'req> as ::router::Body>::Body;
 
             pub type RequestContext<'req> = <super::#handler_request<'req> as ::router::Context>::Context;
 
             pub type ResponseBody<'req> = <super::#handler_response<'req> as ::router::Body>::Body;
 
-            impl<'req> ::router::Route<RequestBody<'req>, ResponseBody<'req>, RequestContext<'req>> for Route {
-                fn try_match(
-                    req: &::router::Request<RequestBody<'req>, RequestContext<'req>>
-                ) -> Option<::router::http::Response<ResponseBody<'req>>> {
-                    #conditions
-
-                    Some(handler(&req.ignore_segments(#matched_segments), #(#arguments),*))
-                }
-            }
+            #try_match
         }
     }
 }
@@ -228,25 +253,76 @@ route_verb!(head => HEAD);
 route_verb!(patch => PATCH);
 route_verb!(options => OPTIONS);
 
-#[proc_macro]
-pub fn routes(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let handlers = parse_macro_input!(input with Punctuated<Path, Token![,]>::parse_terminated);
+#[proc_macro_attribute]
+pub fn any(
+    segments: proc_macro::TokenStream,
+    handler: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let segments = parse_macro_input!(segments as Segments);
+    let handler = parse_macro_input!(handler as syn::ItemFn);
 
-    let handlers = handlers
-        .into_iter()
-        .map(|handler| {
-            quote! {
-                if let Some(response) = #handler::Route::try_match(&request) {
-                    return Some(response);
-                }
-            }
+    route_attribute(segments, handler, None).into()
+}
+
+struct RouterInput {
+    asyncness: Option<Token![async]>,
+    name: Ident,
+    handlers: Punctuated<Path, Token![,]>,
+}
+
+impl Parse for RouterInput {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let asyncness = if input.peek(Token![async]) {
+            Some(input.parse()?)
+        } else {
+            None
+        };
+        let name = input.parse()?;
+        input.parse::<Token![=>]>()?;
+        let handlers = Punctuated::parse_terminated(input)?;
+        Ok(Self {
+            name,
+            handlers,
+            asyncness,
         })
-        .collect::<TokenStream>();
+    }
+}
+
+#[proc_macro]
+pub fn router(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let RouterInput {
+        name,
+        handlers,
+        asyncness,
+    } = parse_macro_input!(input as RouterInput);
+
+    let first = handlers
+        .first()
+        .expect("Must have at least one handler")
+        .clone();
+
+    let handlers = handlers.into_iter();
+
+    let method = if asyncness.is_some() {
+        quote!(try_match_async)
+    } else {
+        quote!(try_match)
+    };
+
+    let maybe_await = asyncness.map(|_| quote!(.await));
 
     quote! {
-        |request: &::router::Request<_, _>| {
-            #handlers
-            None
+        struct #name;
+
+        impl #name {
+            #asyncness fn route<'req>(
+                request: &'req ::router::Request<'req, #first::RequestBody<'req>, #first::RequestContext<'req>>
+            ) -> ::core::option::Option<::router::http::Response<#first::ResponseBody<'req>>> {
+                #(if let Some(response) = #handlers::#method(&request) #maybe_await {
+                    return Some(response);
+                })*
+                None
+            }
         }
     }
     .into()
