@@ -1,18 +1,18 @@
 #![warn(clippy::pedantic)]
 
 use image::RgbaImage;
-use nalgebra::{vector, Isometry2, Vector2};
+use nalgebra::{vector, Isometry2, Rotation2, Vector2};
 use pipeline::Vertex;
 use rand::prelude::*;
 use renderer::texture::Texture;
 use renderer::{bind_group, buffer, Encoder, Renderer, Window};
-use std::io::Write;
+use std::f32::consts::TAU;
 use std::sync::Arc;
 use std::time::Duration;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoopBuilder;
 use winit::keyboard::{Key, NamedKey};
-use winit::window::WindowBuilder;
+use winit::window::{self, WindowBuilder};
 
 mod pipeline;
 mod renderer;
@@ -32,6 +32,8 @@ struct ShaderGlobals {
 #[derive(Clone)]
 struct Step {
     position: Vector2<f32>,
+    velocity: Vector2<f32>,
+    rotation: Rotation2<f32>,
     texture: Arc<Texture>,
 }
 
@@ -50,28 +52,41 @@ impl buffer::ToVertex<Vertex> for Step {
 
         [
             Vertex {
-                position: [x - half_width, y - half_height],
+                position: [-half_width, -half_height],
                 tex_coords: [0., 1.],
             },
             Vertex {
-                position: [x + half_width, y - half_height],
+                position: [half_width, -half_height],
                 tex_coords: [1., 1.],
             },
             Vertex {
-                position: [x + half_width, y + half_height],
+                position: [half_width, half_height],
                 tex_coords: [1., 0.],
             },
             Vertex {
-                position: [x - half_width, y + half_height],
+                position: [-half_width, half_height],
                 tex_coords: [0., 0.],
             },
         ]
+        .map(
+            |Vertex {
+                 position,
+                 tex_coords,
+             }| {
+                let position = Vector2::from(position);
+                let position = vector![x, y] + self.rotation * position;
+
+                Vertex {
+                    position: position.into(),
+                    tex_coords,
+                }
+            },
+        )
     }
 }
 
 impl Step {
     const WIDTH: f32 = 0.2;
-    const VELOCITY: Vector2<f32> = vector!(0., 0.01);
 }
 
 struct Ball {
@@ -127,7 +142,7 @@ impl Ball {
         let ball_shape = parry2d::shape::Ball::new(Self::WIDTH / 2.);
 
         parry2d::query::intersection_test(
-            &Isometry2::new(step.position + Step::VELOCITY, Default::default()),
+            &Isometry2::new(step.position + step.velocity, step.rotation.angle()),
             &step_shape,
             &Isometry2::new(self.position + self.velocity, Default::default()),
             &ball_shape,
@@ -145,8 +160,11 @@ struct Textures {
 enum Event {
     Tick,
     Resize(winit::dpi::PhysicalSize<u32>),
-    Left,
-    Right,
+    Click(Vector2<f32>),
+}
+
+fn reflect(incident: Vector2<f32>, normal: Vector2<f32>) -> Vector2<f32> {
+    2. * incident.dot(&normal) * normal - incident
 }
 
 struct State {
@@ -215,39 +233,43 @@ impl State {
                 {
                     self.ticks_since_step = 0.;
 
-                    self.steps.push(buffer::Vertex::create(
-                        device,
-                        Step {
-                            position: vector!(rand::random(), 0.),
-                            texture: Arc::clone(&self.textures.step),
-                        },
-                    ));
+                    // self.steps.push(buffer::Vertex::create(
+                    //     device,
+                    //     Step {
+                    //         position: vector![rand::random(), 0.],
+                    //         velocity: vector![0.5, 0.5] * 0.01,
+                    //         rotation: Rotation2::new(rand::random::<f32>() * TAU),
+                    //         texture: Arc::clone(&self.textures.step),
+                    //     },
+                    // ));
                 } else {
                     self.ticks_since_step += 1.;
                 }
 
                 let ball = self.ball.data_mut();
 
-                ball.velocity.y -= 0.05;
-                ball.velocity.x = ball.velocity.x.clamp(-0.1, 0.1);
-                ball.velocity.y = ball.velocity.y.clamp(-0.1, 0.1);
-                ball.velocity *= 0.7;
+                ball.velocity.x = ball.velocity.x.clamp(-0.05, 0.05);
+                ball.velocity.y = ball.velocity.y.clamp(-0.05, 0.05);
+                ball.velocity *= 0.9;
 
                 self.steps.retain_mut(|step| {
                     let step = step.data_mut();
-                    if ball.will_intersect(&step) {
-                        ball.velocity.y += 0.15;
+                    if ball.will_intersect(step) {
+                        ball.velocity = reflect(ball.velocity, vector![0., 1.]) + vector![0., 0.15];
                     }
-                    step.position += Step::VELOCITY;
-                    step.position.y < 1.
+                    step.position += step.velocity;
+                    ((0.)..1.).contains(&step.position.y) && ((0.)..1.).contains(&step.position.x)
                 });
 
                 ball.position += ball.velocity;
                 ball.position.x = ball.position.x.clamp(0., 1.);
                 ball.position.y = ball.position.y.clamp(0., 1.);
             }
-            Event::Left => self.ball.data_mut().velocity.x -= 0.05,
-            Event::Right => self.ball.data_mut().velocity.x += 0.05,
+            Event::Click(position) => {
+                let ball = self.ball.data_mut();
+                let ch = (ball.position - position);
+                dbg!(ch);
+            }
         }
     }
 
@@ -320,6 +342,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    let mut cursor_position = vector![0., 0.];
+
     event_loop.run(move |event, elwt| match event {
         winit::event::Event::UserEvent(event) => {
             state.handle_event(event, &device, &queue);
@@ -329,6 +353,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             window_id: id,
             event,
         } if window_id == id => match event {
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: winit::event::MouseButton::Left,
+                ..
+            } => {
+                dbg!(cursor_position);
+                let size = window.window.inner_size();
+                let min_axis = size.width.min(size.height) as f32;
+                let position = vector![
+                    cursor_position.x / min_axis,
+                    -(cursor_position.y / min_axis)
+                ];
+
+                state.handle_event(Event::Click(position), &device, &queue);
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                cursor_position = vector![position.x as f32, position.y as f32];
+            }
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
@@ -339,12 +381,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ..
             } => match (logical_key, key_state) {
                 (Key::Named(NamedKey::Escape), ElementState::Pressed) => elwt.exit(),
-                (Key::Named(NamedKey::ArrowLeft), ElementState::Pressed) => {
-                    state.handle_event(Event::Left, &device, &queue);
-                }
-                (Key::Named(NamedKey::ArrowRight), ElementState::Pressed) => {
-                    state.handle_event(Event::Right, &device, &queue);
-                }
                 _ => {}
             },
             WindowEvent::CloseRequested => elwt.exit(),
